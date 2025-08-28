@@ -82,8 +82,8 @@ const Squares: React.FC<SquaresProps> = ({
     const cy = cssH.current / 2;
     const r = Math.sqrt(cssW.current * cssW.current + cssH.current * cssH.current) / 2;
     const vg = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    vg.addColorStop(0, "rgba(0,0,0,0)");
-    vg.addColorStop(1, "rgba(6,0,16,0.9)"); // very dark purple edges
+    vg.addColorStop(0, "rgba(0,0,0,0.5)");
+    vg.addColorStop(1, "rgba(6,0,16,1)"); // very dark purple edges
     vignetteRef.current = vg;
   }, [getCtx, squareSize, backgroundTop, backgroundBottom]);
 
