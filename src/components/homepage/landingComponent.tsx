@@ -10,7 +10,7 @@ import {
   Fit,
   Alignment,
 } from "@rive-app/react-canvas";
-import Squares from "./bgSquares"; // adjust path
+import Squares from "./Squares"; // adjust path
 
 const SM = "State Machine 1"; // exact names
 const VM = "View Model 1";
