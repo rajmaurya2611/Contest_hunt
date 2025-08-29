@@ -77,7 +77,7 @@ export default function LandingComponent() {
            <span className="text-[#8C45FF]"> Contest</span> <span className="text-white"> again</span>
           </h1>
 
-          <p className="mt-4 text-white/80 text-sm md:text-base lg:text-xl">
+          <p className="mt-4 font-rubik text-white/80 text-sm md:text-base lg:text-xl">
             Real-time schedules for{" "}
             <span className="font-bold text-[#8C45FF]">
               <Typewriter
