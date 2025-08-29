@@ -1,21 +1,23 @@
 "use client";
 
-import React, { useRef } from "react";
+import { useRef, useEffect } from "react";
 import {
   useRive,
   useViewModel,
   useViewModelInstance,
   useViewModelInstanceNumber,
-  Layout,
-  Fit,
-  Alignment,
+  Layout, Fit, Alignment,
 } from "@rive-app/react-canvas";
-import Squares from "./Squares"; // adjust path
+import Squares from "./Squares";
+import Typewriter from "typewriter-effect";
 
-const SM = "State Machine 1"; // exact names
+const SM = "State Machine 1";
 const VM = "View Model 1";
 
 export default function LandingComponent() {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const riveWrapperRef = useRef<HTMLDivElement | null>(null);
+
   const { rive, RiveComponent } = useRive({
     src: "/redigen_1.riv",
     stateMachines: SM,
@@ -26,52 +28,77 @@ export default function LandingComponent() {
 
   const viewModel = useViewModel(rive, { name: VM });
   const vmi = useViewModelInstance(viewModel, { rive });
-
   const { setValue: setMouseX } = useViewModelInstanceNumber("Mouse X", vmi);
   const { setValue: setMouseY } = useViewModelInstanceNumber("Mouse Y", vmi);
 
-  // Wrap the Rive canvas so we can target the right <canvas>
-  const riveWrapperRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || !setMouseX || !setMouseY) return;
 
-  const onPointerMove: React.PointerEventHandler<HTMLDivElement> = (e) => {
-    if (!setMouseX || !setMouseY) return;
-    const riveCanvas =
-      riveWrapperRef.current?.querySelector("canvas") ?? null;
-    if (!riveCanvas) return;
+    const onMove = (e: PointerEvent) => {
+      const r = el.getBoundingClientRect();
+      const nx = ((e.clientX - r.left) / r.width) * 100;
+      const ny = ((e.clientY - r.top) / r.height) * 100;
+      setMouseX(Math.max(0, Math.min(100, nx)));
+      setMouseY(Math.max(0, Math.min(100, ny)));
+    };
 
-    const r = riveCanvas.getBoundingClientRect();
-    // Normalize to 0..100 (match your VM expectations)
-    setMouseX(((e.clientX - r.left) / r.width) * 100);
-    setMouseY(((e.clientY - r.top) / r.height) * 100);
-  };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => window.removeEventListener("pointermove", onMove);
+  }, [setMouseX, setMouseY]);
 
   return (
-    <div
-      onPointerMove={onPointerMove}
-      className="relative w-full h-[100vh] touch-none"
-      // removed the CSS gradient — Squares will be the bg
-    >
-      {/* Background grid (behind everything) */}
+    <div ref={rootRef} className="relative w-full h-[100vh] overflow-hidden touch-none">
+      {/* Background grid */}
       <Squares
-  speed={0.2}
-  squareSize={40}
-  direction="diagonal"
-  borderColor="rgba(255,255,255,0.22)"
-  hoverFillColor="rgba(0,0,0,0.35)"
-  backgroundTop="#020202"
-  backgroundBottom="#2C114A"
-  withVignette={true}
-  className="absolute inset-0 -z-10"
-  style={{ pointerEvents: "none" }}
-/>
+        speed={0.2}
+        squareSize={40}
+        direction="diagonal"
+        borderColor="rgba(255,255,255,0.22)"
+        hoverFillColor="rgba(0,0,0,0.35)"
+        backgroundTop="#020202"
+        backgroundBottom="#2C114A"
+        withVignette={true}
+        className="absolute inset-0 -z-10"
+        style={{ pointerEvents: "none" }}
+      />
 
-      {/* Rive on top */}
-      <div ref={riveWrapperRef} className="absolute inset-0">
+      {/* Rive layer */}
+      <div ref={riveWrapperRef} className="absolute inset-0 z-0">
         <RiveComponent style={{ width: "100%", height: "100%" }} />
       </div>
 
-      {/* Optional foreground content */}
-      {/* <div className="relative z-10">Content</div> */}
+      {/* LEFT TEXT OVERLAY (centered vertically, left-aligned) */}
+      <div className="absolute inset-y-0 left-0 z-10 w-full md:w-1/2 lg:w-5/12 px-6 md:px-8 flex items-center pointer-events-none">
+        <div className="max-w-3xl pl-4">
+          <h1 className="text-white font-rubik font-bold tracking-tight leading-[3.05] text-4xl md:text-4xl lg:text-5xl">
+            Never  miss  a  <span className="text-[#8C45FF]"> Coding</span>
+            <br className="hidden sm:block" />
+           <span className="text-[#8C45FF]"> Contest</span> <span className="text-white"> again</span>
+          </h1>
+
+          <p className="mt-4 text-white/80 text-sm md:text-base lg:text-xl">
+            Real-time schedules for{" "}
+            <span className="font-bold text-[#8C45FF]">
+              <Typewriter
+                component="span"
+                options={{
+                  strings: ["Coding Contests", "Hackathons", "Bug Bounty Programs"],
+                  autoStart: true,
+                  loop: true,
+                  delay: 60,
+                  deleteSpeed: 35,
+                  cursor: "|",
+                  wrapperClassName: "inline text-[#8C45FF]",
+                  cursorClassName: "",
+                }}
+              />
+            </span>
+            <span className="block mt-1">from all major platforms</span>
+          </p>
+          
+        </div>
+      </div>
     </div>
   );
 }
