@@ -207,7 +207,7 @@ export default function LandingComponent() {
 
   {/* Android active button */}
   <a
-  href="https://play.google.com/store/apps/details?id=your.app.id"
+  href="https://play.google.com/store/apps/details?id=com.miraidyo.contesthunt&pcampaignid=web_share"
   target="_blank"
   rel="noopener noreferrer"
   className="pointer-events-auto rounded-full border-2 border-[#8C45FF] bg-gradient-to-r from-[#8C45FF] to-purple-900 hover:shadow-[#8C45FF] text-white font-medium px-5 py-2 mt-8 shadow-md transition inline-block"
