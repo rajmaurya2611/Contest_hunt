@@ -1,12 +1,10 @@
 import ContestSection from "../components/homepage/contests";
 import HeaderComponent from "../components/homepage/header";
-import LandingComponent from "../components/homepage/landingComponent";
 
-export default function Homepage() {
+export default function Contestpage() {
   return (
     <>
     <HeaderComponent/>
-    <LandingComponent/>
     <ContestSection/>
     </>
   )
