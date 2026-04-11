@@ -9,7 +9,7 @@ const RIVE_ARTBOARD = "WCT 01";
 const RIVE_ANIMATION = "CAT RUN";
 
 // Change if your main contest page route is different
-const CONTEST_PAGE_HREF = "/contest";
+const CONTEST_PAGE_HREF = "/contests";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,7 +28,6 @@ interface Contest {
 type Status = "live" | "upcoming" | "ended";
 
 // ─── Platform config ──────────────────────────────────────────────────────────
-// Update logo filenames here if your actual names are different.
 
 const PLATFORM_META: Record<
   string,
@@ -177,7 +176,7 @@ function CatOnlyPanel() {
   );
 }
 
-// ─── Logo component ───────────────────────────────────────────────────────────
+// ─── Logo ─────────────────────────────────────────────────────────────────────
 
 function PlatformLogo({
   src,
@@ -192,18 +191,18 @@ function PlatformLogo({
 
   if (imgError) {
     return (
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] transition-transform duration-300 group-hover:scale-110">
+      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] transition-transform duration-300 group-hover:scale-110 md:h-[68px] md:w-[68px]">
         <span className={`h-3.5 w-3.5 rounded-full ${dotClass}`} />
       </div>
     );
   }
 
   return (
-    <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] p-2 transition-transform duration-300 group-hover:scale-110 md:h-16 md:w-16">
+    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] p-3 transition-transform duration-300 group-hover:scale-110 md:h-[68px] md:w-[68px]">
       <img
         src={src}
         alt={alt}
-        className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-110"
+        className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-110"
         onError={() => setImgError(true)}
       />
     </div>
@@ -231,42 +230,38 @@ function ContestListItem({
       href={contest.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="group block rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-4 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]"
+      className="group block min-h-[146px] rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-4 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]"
     >
-      <div className="flex items-start gap-4">
+      <div className="flex h-full items-start gap-4">
         <PlatformLogo src={meta.logo} alt={meta.label} dotClass={meta.dot} />
 
-        <div className="min-w-0 flex-1">
-          <div className="mb-2 flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
-              <span
-                className={`text-[0.72rem] font-semibold uppercase tracking-[0.15em] ${meta.badge}`}
-              >
-                {meta.label}
+        <div className="flex min-h-full min-w-0 flex-1 flex-col justify-between">
+          <div>
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+                <span
+                  className={`truncate text-[0.72rem] font-semibold uppercase tracking-[0.15em] ${meta.badge}`}
+                >
+                  {meta.label}
+                </span>
+              </div>
+
+              <span className="shrink-0 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-[0.65rem] font-bold tracking-widest text-purple-400">
+                {statusText}
               </span>
             </div>
 
-            <span
-              className={`shrink-0 rounded-full border px-3 py-1 text-[0.65rem] font-bold tracking-widest ${
-                variant === "live"
-                  ? "border-green-500/30 bg-green-500/10 text-green-400"
-                  : "border-purple-500/30 bg-purple-500/10 text-purple-400"
-              }`}
-            >
-              {statusText}
-            </span>
+            <h4 className="line-clamp-2 text-sm font-semibold leading-6 text-white transition-colors duration-200 group-hover:text-purple-300">
+              {contest.name}
+            </h4>
           </div>
 
-          <h4 className="line-clamp-2 text-sm font-semibold leading-6 text-white transition-colors duration-200 group-hover:text-purple-300">
-            {contest.name}
-          </h4>
-
-          <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-white/55">
-            <span>
+          <div className="mt-4 flex items-center gap-6 overflow-hidden text-xs text-white/55">
+            <span className="min-w-0 truncate">
               Starts · {formatDateTime(contest.start_time)}
             </span>
-            <span>
+            <span className="shrink-0">
               Duration · {formatDuration(contest.duration)}
             </span>
           </div>
@@ -289,23 +284,15 @@ function ContestColumn({
 }) {
   return (
     <div className="h-full">
-      <div className="mb-4 flex items-end justify-between gap-3 border-b border-white/10 pb-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/35">
-            Top 5
-          </p>
-          <h3 className="mt-2 text-2xl font-bold text-white">{title}</h3>
-        </div>
-
-        <span
-          className={`rounded-full border px-3 py-1 text-xs font-bold ${
-            variant === "live"
-              ? "border-green-500/30 bg-green-500/10 text-green-400"
-              : "border-purple-500/30 bg-purple-500/10 text-purple-400"
-          }`}
-        >
-          {items.length}
-        </span>
+      <div className="mb-5 border-b border-white/10 pb-4">
+        {variant === "live" ? (
+          <div className="flex items-center gap-3">
+            <span className="h-2.5 w-2.5 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
+            <h3 className="text-2xl font-bold text-white">{title}</h3>
+          </div>
+        ) : (
+          <h3 className="text-2xl font-bold text-white">{title}</h3>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -327,11 +314,7 @@ function ContestColumn({
       <div className="pt-6">
         <a
           href={CONTEST_PAGE_HREF}
-          className={`inline-flex items-center justify-center rounded-2xl border px-5 py-3 text-sm font-semibold transition-all duration-200 ${
-            variant === "live"
-              ? "border-green-500/30 bg-green-500/10 text-green-400 hover:bg-green-500/15"
-              : "border-purple-500/30 bg-purple-500/10 text-purple-400 hover:bg-purple-500/15"
-          }`}
+          className="inline-flex w-full items-center justify-center rounded-2xl border border-purple-500/30 bg-purple-500/10 px-5 py-3 text-center text-sm font-semibold text-purple-400 transition-all duration-200 hover:bg-purple-500/15"
         >
           See All
         </a>
@@ -345,24 +328,26 @@ function ContestColumn({
 function ListSkeleton() {
   return (
     <div>
-      <div className="mb-4 border-b border-white/10 pb-4">
-        <div className="h-3 w-16 animate-pulse rounded bg-white/10" />
-        <div className="mt-3 h-8 w-40 animate-pulse rounded bg-white/10" />
+      <div className="mb-5 border-b border-white/10 pb-4">
+        <div className="h-8 w-40 animate-pulse rounded bg-white/10" />
       </div>
 
       <div className="space-y-4">
         {Array.from({ length: 5 }).map((_, index) => (
           <div
             key={index}
-            className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+            className="min-h-[146px] rounded-2xl border border-white/10 bg-white/[0.03] p-4"
           >
             <div className="flex items-start gap-4">
-              <div className="h-12 w-12 animate-pulse rounded-xl bg-white/10" />
+              <div className="h-16 w-16 animate-pulse rounded-2xl bg-white/10" />
               <div className="flex-1">
-                <div className="h-3 w-20 animate-pulse rounded bg-white/10" />
+                <div className="flex items-start justify-between gap-3">
+                  <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
+                  <div className="h-7 w-28 animate-pulse rounded-full bg-white/10" />
+                </div>
                 <div className="mt-3 h-4 w-4/5 animate-pulse rounded bg-white/10" />
-                <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-white/10" />
-                <div className="mt-2 h-3 w-1/3 animate-pulse rounded bg-white/10" />
+                <div className="mt-2 h-4 w-3/5 animate-pulse rounded bg-white/10" />
+                <div className="mt-5 h-3 w-full animate-pulse rounded bg-white/10" />
               </div>
             </div>
           </div>
@@ -370,7 +355,7 @@ function ListSkeleton() {
       </div>
 
       <div className="pt-6">
-        <div className="h-11 w-28 animate-pulse rounded-2xl bg-white/10" />
+        <div className="h-11 w-full animate-pulse rounded-2xl bg-white/10" />
       </div>
     </div>
   );
