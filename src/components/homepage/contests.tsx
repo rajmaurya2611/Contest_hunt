@@ -407,7 +407,7 @@ export default function ContestSection() {
   return (
     <section
       id="contests"
-      className="relative font-rubik bg-gradient-to-b from-[#020202] to-[#2C114A] px-5 py-16 md:px-8 lg:px-10"
+      className="relative font-rubik bg-[#020202] px-5 py-16 md:px-8 lg:px-10"
     >
       <div className="mx-auto max-w-7xl">
         <div className="mb-12 text-center">

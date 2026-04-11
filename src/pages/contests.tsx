@@ -1,4 +1,4 @@
-import ContestSection from "../components/homepage/contests";
+import ContestSection from "../components/Contests/contests";
 import HeaderComponent from "../components/homepage/header";
 
 export default function Contestpage() {
