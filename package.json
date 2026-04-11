@@ -10,7 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@rive-app/react-canvas": "^4.23.1",
+    "@rive-app/react-canvas": "^4.27.2",
+    "@rive-app/react-webgl2": "^4.27.2",
     "@splinetool/react-spline": "^4.0.0",
     "antd": "^5.26.3",
     "react": "^19.1.0",
