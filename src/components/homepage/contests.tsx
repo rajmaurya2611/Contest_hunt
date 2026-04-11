@@ -134,17 +134,9 @@ function timeLeft(unix: number) {
   return `${Math.max(m, 0)}m left`;
 }
 
-// ─── Sticky Cat Panel ─────────────────────────────────────────────────────────
+// ─── Cat Only Panel ───────────────────────────────────────────────────────────
 
-function StickyCatPanel({
-  liveCount,
-  upcomingCount,
-  totalCount,
-}: {
-  liveCount: number;
-  upcomingCount: number;
-  totalCount: number;
-}) {
+function CatOnlyPanel() {
   const { rive, RiveComponent } = useRive({
     src: RIVE_SRC,
     artboard: RIVE_ARTBOARD,
@@ -168,54 +160,12 @@ function StickyCatPanel({
   }, [rive]);
 
   return (
-    <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-b from-[#321255] via-[#1a0d2b] to-[#050505] px-5 py-6">
-      <div className="pointer-events-none absolute -left-16 top-8 h-44 w-44 rounded-full bg-purple-500/20 blur-3xl" />
-      <div className="pointer-events-none absolute -right-12 bottom-10 h-44 w-44 rounded-full bg-fuchsia-500/10 blur-3xl" />
+    <div className="relative flex min-h-[70vh] items-center justify-center overflow-hidden rounded-[28px] p-0 lg:min-h-[82vh]">
+      {/* <div className="pointer-events-none absolute -left-16 top-8 h-44 w-44 rounded-full bg-purple-500/20 blur-3xl" /> */}
+      {/* <div className="pointer-events-none absolute -right-12 bottom-10 h-44 w-44 rounded-full bg-fuchsia-500/10 blur-3xl" /> */}
 
-      <div className="relative z-10">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-purple-300">
-          Contest Intelligence
-        </p>
-
-        <h3 className="mt-3 text-2xl font-bold leading-tight text-white md:text-3xl">
-          Compete <span className="text-[#8C45FF]">Smarter</span>
-        </h3>
-
-        <p className="mt-3 text-sm leading-6 text-white/60">
-          Real-time contest visibility with a sticky visual anchor and live
-          contest feed.
-        </p>
-      </div>
-
-      <div className="relative z-10 my-6 flex items-center justify-center">
-        <div className="h-[280px] w-full max-w-[300px] lg:h-[360px] lg:max-w-[360px]">
-          <RiveComponent className="h-full w-full" />
-        </div>
-      </div>
-
-      <div className="relative z-10 grid grid-cols-3 gap-3">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 backdrop-blur-sm">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-white/35">
-            Total
-          </p>
-          <p className="mt-2 text-2xl font-bold text-white">{totalCount}</p>
-        </div>
-
-        <div className="rounded-2xl border border-green-500/20 bg-green-500/10 p-4 backdrop-blur-sm">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-green-300/70">
-            Live
-          </p>
-          <p className="mt-2 text-2xl font-bold text-green-400">{liveCount}</p>
-        </div>
-
-        <div className="rounded-2xl border border-purple-500/20 bg-purple-500/10 p-4 backdrop-blur-sm">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-purple-300/70">
-            Upcoming
-          </p>
-          <p className="mt-2 text-2xl font-bold text-purple-400">
-            {upcomingCount}
-          </p>
-        </div>
+      <div className="relative z-10 h-[360px] w-full max-w-[360px] sm:h-[420px] sm:max-w-[420px] lg:h-[520px] lg:max-w-[520px]">
+        <RiveComponent className="h-full w-full" />
       </div>
     </div>
   );
@@ -408,22 +358,6 @@ export default function ContestSection() {
     })();
   }, []);
 
-  const counts = useMemo(() => {
-    const live = contests.filter(
-      (c) => getStatus(c.start_time, c.end_time) === "live"
-    ).length;
-
-    const upcoming = contests.filter(
-      (c) => getStatus(c.start_time, c.end_time) === "upcoming"
-    ).length;
-
-    return {
-      live,
-      upcoming,
-      total: contests.length,
-    };
-  }, [contests]);
-
   const topUpcoming = useMemo(() => {
     return contests
       .filter((c) => getStatus(c.start_time, c.end_time) === "upcoming")
@@ -441,73 +375,51 @@ export default function ContestSection() {
   return (
     <section
       id="contests"
-      className="relative bg-gradient-to-b from-[#2C114A] to-[#020202] px-5 py-16 md:px-8 lg:px-10"
+      className="relative bg-gradient-to-b from-[#020202] to-[#2C114A] px-5 py-16 md:px-8 lg:px-10"
     >
       <div className="mx-auto max-w-7xl">
         <div className="mb-12 text-center">
           <h2 className="text-4xl font-bold leading-tight tracking-tight text-white md:text-5xl">
-            Upcoming <span className="text-[#8C45FF]">Contest</span>
+            Coding <span className="text-[#8C45FF]">Contests</span>
           </h2>
         </div>
 
         {loading ? (
-          <div className="grid gap-8 lg:min-h-[140vh] lg:grid-cols-5">
-            <div className="lg:col-span-2">
+          <div className="grid gap-8 lg:min-h-[140vh] lg:grid-cols-3">
+            <div>
               <div className="lg:sticky lg:top-24">
-                <div className="rounded-[28px] border border-white/10 bg-gradient-to-b from-[#321255] via-[#1a0d2b] to-[#050505] p-6">
-                  <div className="h-4 w-28 animate-pulse rounded bg-white/10" />
-                  <div className="mt-3 h-8 w-40 animate-pulse rounded bg-white/10" />
-                  <div className="mt-6 h-[340px] w-full animate-pulse rounded-3xl bg-white/5" />
-                  <div className="mt-6 grid grid-cols-3 gap-3">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="h-20 animate-pulse rounded-2xl bg-white/10"
-                      />
-                    ))}
-                  </div>
+                <div className="rounded-[28px] border border-white/10 bg-gradient-to-b from-[#321255] via-[#1a0d2b] to-[#050505]">
+                  <div className="h-[70vh] animate-pulse rounded-[28px] bg-white/5 lg:h-[82vh]" />
                 </div>
               </div>
             </div>
 
-            <div className="lg:col-span-3">
-              <div className="grid gap-10 md:grid-cols-2">
-                <ListSkeleton />
-                <ListSkeleton />
-              </div>
-            </div>
+            <ListSkeleton />
+            <ListSkeleton />
           </div>
         ) : error ? (
           <div className="rounded-3xl border border-red-500/20 bg-red-500/10 px-6 py-10 text-center text-sm text-red-400">
             ⚠️ {error}
           </div>
         ) : (
-          <div className="grid gap-8 lg:min-h-[140vh] lg:grid-cols-5">
-            <div className="lg:col-span-2">
+          <div className="grid gap-8 lg:min-h-[140vh] lg:grid-cols-3">
+            <div>
               <div className="lg:sticky lg:top-24">
-                <StickyCatPanel
-                  liveCount={counts.live}
-                  upcomingCount={counts.upcoming}
-                  totalCount={counts.total}
-                />
+                <CatOnlyPanel />
               </div>
             </div>
 
-            <div className="lg:col-span-3">
-              <div className="grid gap-10 md:grid-cols-2">
-                <ContestColumn
-                  title="Upcoming Contest"
-                  items={topUpcoming}
-                  variant="upcoming"
-                />
+            <ContestColumn
+              title="Upcoming Contest"
+              items={topUpcoming}
+              variant="upcoming"
+            />
 
-                <ContestColumn
-                  title="Live Contest"
-                  items={topLive}
-                  variant="live"
-                />
-              </div>
-            </div>
+            <ContestColumn
+              title="Live Contest"
+              items={topLive}
+              variant="live"
+            />
           </div>
         )}
       </div>
