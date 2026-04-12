@@ -75,6 +75,12 @@ const PLATFORM_META: Record<
     dot: "bg-rose-400",
     logo: "/icons/code360.png",
   },
+  geeksforgeeks: {
+    label: "GeeksforGeeks",
+    badge: "text-green-400",
+    dot: "bg-green-400",
+    logo: "/icons/geeksforgeeks.png",
+  },
 };
 
 function getPlatform(p: string) {
