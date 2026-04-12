@@ -8,12 +8,12 @@ const RIVE_SRC = "/magic-cat.riv";
 const RIVE_ARTBOARD = "WCT 01";
 const RIVE_ANIMATION = "CAT RUN";
 
-// Change if your main contest page route is different
-const CONTEST_PAGE_HREF = "/contests";
+// Change if your main hackathon page route is different
+const HACKATHON_PAGE_HREF = "/hackathons";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Contest {
+interface Hackathon {
   id: number;
   name: string;
   platform: string;
@@ -23,6 +23,8 @@ interface Contest {
   duration: number;
   description: string;
   created_at: string;
+  hackathon_banner?: string;
+  mode?: string;
 }
 
 type Status = "live" | "upcoming" | "ended";
@@ -33,63 +35,39 @@ const PLATFORM_META: Record<
   string,
   { label: string; badge: string; dot: string; logo: string }
 > = {
-  leetcode: {
-    label: "LeetCode",
-    badge: "text-yellow-400",
-    dot: "bg-yellow-400",
-    logo: "/icons/leetcode.png",
+  devfolio: {
+    label: "Devfolio",
+    badge: "text-violet-400",
+    dot: "bg-violet-400",
+    logo: "/icons/devfolio.png",
   },
-  codeforces: {
-    label: "Codeforces",
+  devpost: {
+    label: "Devpost",
     badge: "text-blue-400",
     dot: "bg-blue-400",
-    logo: "/icons/codeforces.png",
+    logo: "/icons/devpost.png",
   },
-  codechef: {
-    label: "CodeChef",
-    badge: "text-orange-400",
-    dot: "bg-orange-400",
-    logo: "/icons/codechef.png",
-  },
-  atcoder: {
-    label: "AtCoder",
-    badge: "text-teal-400",
-    dot: "bg-teal-400",
-    logo: "/icons/atcoder.png",
+  unstop: {
+    label: "Unstop",
+    badge: "text-pink-400",
+    dot: "bg-pink-400",
+    logo: "/icons/unstop.png",
   },
   hackerearth: {
     label: "HackerEarth",
-    badge: "text-indigo-400",
-    dot: "bg-indigo-400",
+    badge: "text-emerald-400",
+    dot: "bg-emerald-400",
     logo: "/icons/hackerearth.png",
-  },
-  csacademy: {
-    label: "CS Academy",
-    badge: "text-red-400",
-    dot: "bg-red-400",
-    logo: "/icons/csacademy.png",
-  },
-  code360: {
-    label: "Code360",
-    badge: "text-rose-400",
-    dot: "bg-rose-400",
-    logo: "/icons/code360.png",
-  },
-  geeksforgeeks: {
-    label: "GeeksforGeeks",
-    badge: "text-green-400",
-    dot: "bg-green-400",
-    logo: "/icons/geeksforgeeks.png",
   },
 };
 
 function getPlatform(p: string) {
   return (
-    PLATFORM_META[p.toLowerCase()] ?? {
-      label: p,
+    PLATFORM_META[p?.toLowerCase()] ?? {
+      label: p || "Platform",
       badge: "text-purple-400",
       dot: "bg-purple-400",
-      logo: "/assets/icons/default.png",
+      logo: "/icons/default.png",
     }
   );
 }
@@ -104,11 +82,16 @@ function getStatus(start: number, end: number): Status {
 }
 
 function formatDuration(seconds: number) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
+  const totalHours = Math.floor(seconds / 3600);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  const minutes = Math.floor((seconds % 3600) / 60);
+
+  if (days > 0 && hours > 0) return `${days}d ${hours}h`;
+  if (days > 0) return `${days}d`;
+  if (totalHours > 0 && minutes > 0) return `${totalHours}h ${minutes}m`;
+  if (totalHours > 0) return `${totalHours}h`;
+  return `${minutes}m`;
 }
 
 function formatDateTime(unix: number) {
@@ -148,6 +131,11 @@ function timeLeft(unix: number) {
   return `${Math.max(m, 0)}m left`;
 }
 
+function clampText(text: string, max = 110) {
+  if (!text) return "";
+  return text.length > max ? `${text.slice(0, max).trim()}...` : text;
+}
+
 // ─── Cat Only Panel ───────────────────────────────────────────────────────────
 
 function CatOnlyPanel() {
@@ -182,9 +170,36 @@ function CatOnlyPanel() {
   );
 }
 
-// ─── Logo ─────────────────────────────────────────────────────────────────────
+// ─── Banner + Platform Logo ───────────────────────────────────────────────────
 
-function PlatformLogo({
+function HackathonBanner({
+  banner,
+  fallbackLogo,
+  alt,
+}: {
+  banner?: string;
+  fallbackLogo: string;
+  alt: string;
+}) {
+  const [imgError, setImgError] = useState(false);
+  const imageSrc = !imgError && banner ? banner : fallbackLogo;
+
+  return (
+    <div className="relative h-[140px] w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] md:h-[150px]">
+      <img
+        src={imageSrc}
+        alt={alt}
+        className={`h-full w-full ${
+          banner && !imgError ? "object-cover" : "object-contain p-4"
+        } transition-transform duration-300 group-hover:scale-105`}
+        onError={() => setImgError(true)}
+      />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+    </div>
+  );
+}
+
+function PlatformMiniLogo({
   src,
   alt,
   dotClass,
@@ -197,53 +212,65 @@ function PlatformLogo({
 
   if (imgError) {
     return (
-      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] transition-transform duration-300 group-hover:scale-110 md:h-[68px] md:w-[68px]">
-        <span className={`h-3.5 w-3.5 rounded-full ${dotClass}`} />
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05]">
+        <span className={`h-3 w-3 rounded-full ${dotClass}`} />
       </div>
     );
   }
 
   return (
-    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] p-3 transition-transform duration-300 group-hover:scale-110 md:h-[68px] md:w-[68px]">
+    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.05] p-2">
       <img
         src={src}
         alt={alt}
-        className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-110"
+        className="max-h-full max-w-full object-contain"
         onError={() => setImgError(true)}
       />
     </div>
   );
 }
 
-// ─── Contest Card ─────────────────────────────────────────────────────────────
+// ─── Hackathon Card ───────────────────────────────────────────────────────────
 
-function ContestListItem({
-  contest,
+function HackathonListItem({
+  hackathon,
   variant,
 }: {
-  contest: Contest;
+  hackathon: Hackathon;
   variant: "upcoming" | "live";
 }) {
-  const meta = getPlatform(contest.platform);
+  const meta = getPlatform(hackathon.platform);
 
   const statusText =
     variant === "live"
-      ? `Ends in ${timeLeft(contest.end_time)}`
-      : `Starts in ${timeUntil(contest.start_time).replace(/^in\s*/, "")}`;
+      ? `Ends in ${timeLeft(hackathon.end_time)}`
+      : `Starts in ${timeUntil(hackathon.start_time).replace(/^in\s*/, "")}`;
 
   return (
     <a
-      href={contest.url}
+      href={hackathon.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="group block min-h-[146px] rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-4 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]"
+      className="group block min-h-[250px] rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-4 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]"
     >
-      <div className="flex h-full items-start gap-4">
-        <PlatformLogo src={meta.logo} alt={meta.label} dotClass={meta.dot} />
+      <div className="flex h-full flex-col">
+        {/* full-width banner */}
+        <HackathonBanner
+          banner={hackathon.hackathon_banner}
+          fallbackLogo={meta.logo}
+          alt={hackathon.name}
+        />
 
-        <div className="flex min-h-full min-w-0 flex-1 flex-col justify-between">
-          <div>
-            <div className="mb-2 flex items-start justify-between gap-3">
+        {/* platform row below banner */}
+        <div className="mt-4 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <PlatformMiniLogo
+              src={meta.logo}
+              alt={meta.label}
+              dotClass={meta.dot}
+            />
+
+            <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
                 <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
                 <span
@@ -251,41 +278,53 @@ function ContestListItem({
                 >
                   {meta.label}
                 </span>
+
+                {hackathon.mode ? (
+                  <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-white/60">
+                    {hackathon.mode}
+                  </span>
+                ) : null}
               </div>
-
-              <span className="shrink-0 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-[0.65rem] font-bold tracking-widest text-purple-400">
-                {statusText}
-              </span>
             </div>
-
-            <h4 className="line-clamp-2 text-sm font-semibold leading-6 text-white transition-colors duration-200 group-hover:text-purple-300">
-              {contest.name}
-            </h4>
           </div>
 
-          <div className="mt-4 flex items-center gap-6 overflow-hidden text-xs text-white/55">
-            <span className="min-w-0 truncate">
-              Starts · {formatDateTime(contest.start_time)}
-            </span>
-            <span className="shrink-0">
-              Duration · {formatDuration(contest.duration)}
-            </span>
-          </div>
+          <span className="shrink-0 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-[0.65rem] font-bold tracking-widest text-purple-400">
+            {statusText}
+          </span>
+        </div>
+
+        <h4 className="mt-3 line-clamp-2 text-sm font-semibold leading-6 text-white transition-colors duration-200 group-hover:text-purple-300">
+          {hackathon.name}
+        </h4>
+
+        {hackathon.description ? (
+          <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/45">
+            {clampText(hackathon.description)}
+          </p>
+        ) : null}
+
+        <div className="mt-4 flex items-center gap-6 overflow-hidden text-xs text-white/55">
+          <span className="min-w-0 truncate">
+            Starts · {formatDateTime(hackathon.start_time)}
+          </span>
+          <span className="shrink-0">
+            Duration · {formatDuration(hackathon.duration)}
+          </span>
         </div>
       </div>
     </a>
   );
 }
 
-// ─── Contest Column ───────────────────────────────────────────────────────────
+// ─── Hackathon Column ─────────────────────────────────────────────────────────
 
-function ContestColumn({
+function HackathonColumn({
   title,
   items,
   variant,
 }: {
   title: string;
-  items: Contest[];
+  items: Hackathon[];
   variant: "upcoming" | "live";
 }) {
   return (
@@ -304,13 +343,13 @@ function ContestColumn({
       <div className="space-y-4">
         {items.length === 0 ? (
           <div className="py-10 text-sm text-white/35">
-            No {variant} contests right now.
+            No {variant} hackathons right now.
           </div>
         ) : (
-          items.map((contest) => (
-            <ContestListItem
-              key={contest.id}
-              contest={contest}
+          items.map((hackathon) => (
+            <HackathonListItem
+              key={hackathon.id}
+              hackathon={hackathon}
               variant={variant}
             />
           ))
@@ -319,7 +358,7 @@ function ContestColumn({
 
       <div className="pt-6">
         <a
-          href={CONTEST_PAGE_HREF}
+          href={HACKATHON_PAGE_HREF}
           className="inline-flex w-full items-center justify-center rounded-2xl border border-purple-500/30 bg-purple-500/10 px-5 py-3 text-center text-sm font-semibold text-purple-400 transition-all duration-200 hover:bg-purple-500/15"
         >
           See All
@@ -335,27 +374,30 @@ function ListSkeleton() {
   return (
     <div>
       <div className="mb-5 border-b border-white/10 pb-4">
-        <div className="h-8 w-40 animate-pulse rounded bg-white/10" />
+        <div className="h-8 w-44 animate-pulse rounded bg-white/10" />
       </div>
 
       <div className="space-y-4">
         {Array.from({ length: 5 }).map((_, index) => (
           <div
             key={index}
-            className="min-h-[146px] rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+            className="min-h-[250px] rounded-2xl border border-white/10 bg-white/[0.03] p-4"
           >
-            <div className="flex items-start gap-4">
-              <div className="h-16 w-16 animate-pulse rounded-2xl bg-white/10" />
-              <div className="flex-1">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
-                  <div className="h-7 w-28 animate-pulse rounded-full bg-white/10" />
-                </div>
-                <div className="mt-3 h-4 w-4/5 animate-pulse rounded bg-white/10" />
-                <div className="mt-2 h-4 w-3/5 animate-pulse rounded bg-white/10" />
-                <div className="mt-5 h-3 w-full animate-pulse rounded bg-white/10" />
+            <div className="h-[140px] w-full animate-pulse rounded-2xl bg-white/10 md:h-[150px]" />
+
+            <div className="mt-4 flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="h-11 w-11 animate-pulse rounded-xl bg-white/10" />
+                <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
               </div>
+
+              <div className="h-7 w-28 animate-pulse rounded-full bg-white/10" />
             </div>
+
+            <div className="mt-3 h-4 w-4/5 animate-pulse rounded bg-white/10" />
+            <div className="mt-2 h-4 w-3/5 animate-pulse rounded bg-white/10" />
+            <div className="mt-2 h-4 w-full animate-pulse rounded bg-white/10" />
+            <div className="mt-5 h-3 w-full animate-pulse rounded bg-white/10" />
           </div>
         ))}
       </div>
@@ -369,25 +411,25 @@ function ListSkeleton() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export default function ContestSection() {
-  const [contests, setContests] = useState<Contest[]>([]);
+export default function HackathonSection() {
+  const [hackathons, setHackathons] = useState<Hackathon[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const apiUrl = import.meta.env.VITE_CONTESTS_API_URL;
+        const apiUrl = import.meta.env.VITE_HACKATHONS_API_URL;
 
         if (!apiUrl) {
-          throw new Error("VITE_CONTESTS_API_URL is not defined");
+          throw new Error("VITE_HACKATHONS_API_URL is not defined");
         }
 
         const res = await fetch(apiUrl);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        const data: Contest[] = await res.json();
-        setContests(Array.isArray(data) ? data : []);
+        const data: Hackathon[] = await res.json();
+        setHackathons(Array.isArray(data) ? data : []);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to fetch");
       } finally {
@@ -397,28 +439,28 @@ export default function ContestSection() {
   }, []);
 
   const topUpcoming = useMemo(() => {
-    return contests
-      .filter((c) => getStatus(c.start_time, c.end_time) === "upcoming")
+    return hackathons
+      .filter((h) => getStatus(h.start_time, h.end_time) === "upcoming")
       .sort((a, b) => a.start_time - b.start_time)
       .slice(0, 5);
-  }, [contests]);
+  }, [hackathons]);
 
   const topLive = useMemo(() => {
-    return contests
-      .filter((c) => getStatus(c.start_time, c.end_time) === "live")
+    return hackathons
+      .filter((h) => getStatus(h.start_time, h.end_time) === "live")
       .sort((a, b) => a.end_time - b.end_time)
       .slice(0, 5);
-  }, [contests]);
+  }, [hackathons]);
 
   return (
     <section
-      id="contests"
+      id="hackathons"
       className="relative font-rubik bg-[#020202] px-5 py-16 md:px-8 lg:px-10"
     >
       <div className="mx-auto max-w-7xl">
         <div className="mb-12 text-center">
           <h2 className="text-4xl font-bold leading-tight tracking-tight text-white md:text-5xl">
-            Coding <span className="text-[#8C45FF]">Contests</span>
+            Trending <span className="text-[#8C45FF]">Hackathons</span>
           </h2>
         </div>
 
@@ -447,14 +489,14 @@ export default function ContestSection() {
               </div>
             </div>
 
-            <ContestColumn
-              title="Upcoming Contests"
+            <HackathonColumn
+              title="Upcoming Hackathons"
               items={topUpcoming}
               variant="upcoming"
             />
 
-            <ContestColumn
-              title="Live Contests"
+            <HackathonColumn
+              title="Live Hackathons"
               items={topLive}
               variant="live"
             />
