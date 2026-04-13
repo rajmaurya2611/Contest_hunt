@@ -418,7 +418,7 @@ export default function ContestSection() {
       <div className="mx-auto max-w-7xl">
         <div className="mb-12 text-center">
           <h2 className="text-4xl font-bold leading-tight tracking-tight text-white md:text-5xl">
-            Coding <span className="text-[#8C45FF]">Contests</span>
+            Coding <span className="text-purple-500">Contests</span>
           </h2>
         </div>
 

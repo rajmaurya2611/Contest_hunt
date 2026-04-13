@@ -327,7 +327,8 @@ export default function LandingComponent() {
       <div className="absolute inset-y-0 left-0 z-10 w-full md:w-1/2 lg:w-5/12 px-6 md:px-8 flex items-center pointer-events-none">
         <div className="max-w-3xl">
           <h1 className="text-white font-rubik font-bold tracking-tight leading-[1.08] text-4xl md:text-4xl lg:text-5xl text-left select-none">
-            Never miss a <span className="text-[#8C45FF]">Coding</span>
+            {/* text-[#8C45FF] */}
+            Never miss a <span className="text-purple-500">Coding</span>
             <br className="hidden sm:block" />
             <span className="sm:hidden"> </span>
             Contest <span className="text-white">again</span>
