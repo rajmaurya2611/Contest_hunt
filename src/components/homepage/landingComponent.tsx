@@ -233,7 +233,7 @@
 
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import {
   useRive,
   useViewModel,
@@ -249,7 +249,7 @@ import Typewriter from "typewriter-effect";
 const SM = "State Machine 1";
 const VM = "View Model 1";
 
-export default function LandingComponent() {
+function DesktopRiveLayer() {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const riveWrapperRef = useRef<HTMLDivElement | null>(null);
 
@@ -266,37 +266,46 @@ export default function LandingComponent() {
   const { setValue: setMouseX } = useViewModelInstanceNumber("Mouse X", vmi);
   const { setValue: setMouseY } = useViewModelInstanceNumber("Mouse Y", vmi);
 
-  // Cursor tracking only for desktop view
   useEffect(() => {
     const el = rootRef.current;
     if (!el || !setMouseX || !setMouseY) return;
 
-    const isDesktop = () =>
-      window.innerWidth >= 1024 && window.matchMedia("(pointer: fine)").matches;
-
     const onMove = (e: PointerEvent) => {
-      if (!isDesktop()) return;
-
       const r = el.getBoundingClientRect();
       const nx = ((e.clientX - r.left) / r.width) * 100;
       const ny = ((e.clientY - r.top) / r.height) * 100;
-
       setMouseX(Math.max(0, Math.min(100, nx)));
       setMouseY(Math.max(0, Math.min(100, ny)));
     };
 
     window.addEventListener("pointermove", onMove, { passive: true });
-
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-    };
+    return () => window.removeEventListener("pointermove", onMove);
   }, [setMouseX, setMouseY]);
 
   return (
-    <div
-      ref={rootRef}
-      className="relative w-full h-[100svh] lg:h-[100vh] overflow-x-hidden overflow-y-auto lg:overflow-hidden touch-auto lg:touch-none"
-    >
+    <div ref={rootRef} className="absolute inset-0 z-0 hidden lg:block">
+      <div ref={riveWrapperRef} className="absolute inset-0">
+        <RiveComponent style={{ width: "100%", height: "100%" }} />
+      </div>
+    </div>
+  );
+}
+
+export default function LandingComponent() {
+  const [showDesktopRive, setShowDesktopRive] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setShowDesktopRive(window.innerWidth >= 1024);
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  return (
+    <div className="relative w-full min-h-[100svh] lg:h-[100vh] overflow-x-hidden overflow-y-auto lg:overflow-hidden">
       {/* Background grid */}
       <Squares
         speed={0.2}
@@ -311,10 +320,8 @@ export default function LandingComponent() {
         style={{ pointerEvents: "none" }}
       />
 
-      {/* Rive */}
-      <div ref={riveWrapperRef} className="absolute inset-0 z-0">
-        <RiveComponent style={{ width: "100%", height: "100%" }} />
-      </div>
+      {/* Rive only on desktop */}
+      {showDesktopRive && <DesktopRiveLayer />}
 
       {/* LEFT OVERLAY */}
       <div className="absolute inset-y-0 left-0 z-10 w-full md:w-1/2 lg:w-5/12 px-6 md:px-8 flex items-center pointer-events-none">
@@ -332,11 +339,7 @@ export default function LandingComponent() {
               <Typewriter
                 component="span"
                 options={{
-                  strings: [
-                    "Coding Contests",
-                    "Hackathons",
-                    "Bug Bounty Programs",
-                  ],
+                  strings: ["Coding Contests", "Hackathons", "Bug Bounty Programs"],
                   autoStart: true,
                   loop: true,
                   delay: 60,
