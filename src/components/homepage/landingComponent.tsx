@@ -239,7 +239,9 @@ import {
   useViewModel,
   useViewModelInstance,
   useViewModelInstanceNumber,
-  Layout, Fit, Alignment,
+  Layout,
+  Fit,
+  Alignment,
 } from "@rive-app/react-canvas";
 import Squares from "./Squares";
 import Typewriter from "typewriter-effect";
@@ -264,7 +266,7 @@ export default function LandingComponent() {
   const { setValue: setMouseX } = useViewModelInstanceNumber("Mouse X", vmi);
   const { setValue: setMouseY } = useViewModelInstanceNumber("Mouse Y", vmi);
 
-  // Keep existing behavior exactly same
+  // Eye-tracking stays global (container-relative)
   useEffect(() => {
     const el = rootRef.current;
     if (!el || !setMouseX || !setMouseY) return;
@@ -282,10 +284,7 @@ export default function LandingComponent() {
   }, [setMouseX, setMouseY]);
 
   return (
-    <div
-      ref={rootRef}
-      className="relative w-full h-[100svh] md:h-[100vh] overflow-hidden touch-pan-y md:touch-none"
-    >
+    <div ref={rootRef} className="relative w-full h-[100vh] overflow-hidden touch-none">
       {/* Background grid */}
       <Squares
         speed={0.2}
@@ -305,16 +304,18 @@ export default function LandingComponent() {
         <RiveComponent style={{ width: "100%", height: "100%" }} />
       </div>
 
-      {/* LEFT OVERLAY: desktop untouched, mobile only adjusted */}
-      <div className="absolute inset-y-0 left-0 z-10 w-full md:w-1/2 lg:w-5/12 px-5 md:px-8 flex items-center pointer-events-none">
-        <div className="max-w-3xl w-full">
-          <h1 className="text-white font-rubik font-bold tracking-tight leading-[1.08] text-3xl sm:text-4xl md:text-4xl lg:text-5xl text-center md:text-left select-none">
+      {/* LEFT OVERLAY: pass-through by default (keeps eye tracking responsive) */}
+      <div className="absolute inset-y-0 left-0 z-10 w-full md:w-1/2 lg:w-5/12 px-6 md:px-8 flex items-center pointer-events-none">
+        <div className="max-w-3xl">
+          {/* Non-interactive text (doesn't block pointer moves) */}
+          <h1 className="text-white font-rubik font-bold tracking-tight leading-[1.08] text-4xl md:text-4xl lg:text-5xl text-left select-none">
             Never miss a <span className="text-[#8C45FF]">Coding</span>
             <br className="hidden sm:block" />
+            <span className="sm:hidden"> </span>
             Contest <span className="text-white">again</span>
           </h1>
 
-          <p className="mt-5 text-white/80 text-sm md:text-base lg:text-xl text-center md:text-left select-none">
+          <p className="mt-5 text-white/80 text-sm md:text-base lg:text-xl text-left select-none">
             Real-time schedules for{" "}
             <span className="font-bold text-[#8C45FF]">
               <Typewriter
@@ -334,25 +335,24 @@ export default function LandingComponent() {
             <span className="block mt-2">from all major platforms</span>
           </p>
 
-          <div className="mt-8 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0 pointer-events-auto">
-            {/* Android active button */}
-            <a
-              href="https://play.google.com/store/apps/details?id=com.miraidyo.contesthunt&pcampaignid=web_share"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full sm:w-auto text-center rounded-full border-2 border-[#8C45FF] bg-gradient-to-r from-[#8C45FF] to-purple-900 hover:shadow-[#8C45FF] text-white font-medium px-5 py-2 shadow-md transition inline-block"
-            >
-              Download for Android
-            </a>
+          {/* Android active button */}
+         <div className="mt-8 flex flex-wrap gap-4 pointer-events-auto">
+  <a
+    href="https://play.google.com/store/apps/details?id=com.miraidyo.contesthunt&pcampaignid=web_share"
+    target="_blank"
+    rel="noopener noreferrer"
+    className="w-[220px] text-center rounded-full border-2 border-[#8C45FF] bg-gradient-to-r from-[#8C45FF] to-purple-900 hover:shadow-[#8C45FF] text-white font-medium px-5 py-2 shadow-md transition inline-block"
+  >
+    Download for Android
+  </a>
 
-            {/* iOS disabled button */}
-            <button
-              className="w-full sm:w-auto rounded-full border-2 border-gray-400 text-gray-400 font-medium px-5 py-2 sm:ml-4 cursor-not-allowed"
-              disabled
-            >
-              iOS coming soon
-            </button>
-          </div>
+  <button
+    className="w-[220px] text-center rounded-full border-2 border-gray-400 text-gray-400 font-medium px-5 py-2 cursor-not-allowed"
+    disabled
+  >
+    iOS coming soon
+  </button>
+</div>
         </div>
       </div>
     </div>
