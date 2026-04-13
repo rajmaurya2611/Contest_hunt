@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type SyntheticEvent,
+} from "react";
 import { useRive, Layout, Fit, Alignment } from "@rive-app/react-webgl2";
 
 // ─── Rive config ──────────────────────────────────────────────────────────────
@@ -182,17 +187,45 @@ function HackathonBanner({
   alt: string;
 }) {
   const [imgError, setImgError] = useState(false);
+  const [useContain, setUseContain] = useState(!banner);
+
   const imageSrc = !imgError && banner ? banner : fallbackLogo;
 
+  function handleLoad(e: SyntheticEvent<HTMLImageElement>) {
+    const img = e.currentTarget;
+    const ratio = img.naturalWidth / img.naturalHeight;
+
+    // Smart fit:
+    // - no banner / fallback logo => contain
+    // - square-ish or ultra-wide images => contain
+    // - normal banner ratios => cover
+    const shouldContain =
+      !banner || imgError || ratio < 1.45 || ratio > 3.35;
+
+    setUseContain(shouldContain);
+  }
+
+  function handleError() {
+    setImgError(true);
+    setUseContain(true);
+  }
+
   return (
-    <div className="relative h-[140px] w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] md:h-[150px]">
+    <div
+      className={`relative h-[140px] w-full overflow-hidden rounded-2xl border border-white/10 md:h-[150px] ${
+        useContain
+          ? "bg-white/[0.06]"
+          : "bg-white/[0.04]"
+      }`}
+    >
       <img
         src={imageSrc}
         alt={alt}
-        className={`h-full w-full ${
-          banner && !imgError ? "object-cover" : "object-contain p-4"
-        } transition-transform duration-300 group-hover:scale-105`}
-        onError={() => setImgError(true)}
+        onLoad={handleLoad}
+        onError={handleError}
+        className={`h-full w-full transition-transform duration-300 group-hover:scale-[1.02] ${
+          useContain ? "object-contain p-3" : "object-cover"
+        }`}
       />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
     </div>
@@ -251,18 +284,17 @@ function HackathonListItem({
       href={hackathon.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="group block min-h-[250px] rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-4 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]"
+      className="group block min-h-[285px] rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-4 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]"
     >
       <div className="flex h-full flex-col">
-        {/* full-width banner */}
         <HackathonBanner
           banner={hackathon.hackathon_banner}
           fallbackLogo={meta.logo}
           alt={hackathon.name}
         />
 
-        {/* platform row below banner */}
-        <div className="mt-4 flex items-start justify-between gap-3">
+        {/* Platform row */}
+        <div className="mt-4 flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <PlatformMiniLogo
               src={meta.logo}
@@ -270,40 +302,41 @@ function HackathonListItem({
               dotClass={meta.dot}
             />
 
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
-                <span
-                  className={`truncate text-[0.72rem] font-semibold uppercase tracking-[0.15em] ${meta.badge}`}
-                >
-                  {meta.label}
-                </span>
-
-                {hackathon.mode ? (
-                  <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-white/60">
-                    {hackathon.mode}
-                  </span>
-                ) : null}
-              </div>
+            <div className="min-w-0 flex items-center gap-2">
+              <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+              <span
+                className={`truncate text-[0.72rem] font-semibold uppercase tracking-[0.15em] ${meta.badge}`}
+              >
+                {meta.label}
+              </span>
             </div>
           </div>
 
-          <span className="shrink-0 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-[0.65rem] font-bold tracking-widest text-purple-400">
+          {hackathon.mode ? (
+            <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-white/60">
+              {hackathon.mode}
+            </span>
+          ) : null}
+        </div>
+
+        {/* Title + status row */}
+        <div className="mt-3 flex items-start justify-between gap-3">
+          <h4 className="min-h-[3rem] min-w-0 flex-1 line-clamp-2 text-sm font-semibold leading-6 text-white transition-colors duration-200 group-hover:text-purple-300">
+            {hackathon.name}
+          </h4>
+
+          <span className="mt-0.5 shrink-0 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-[0.65rem] font-bold tracking-widest text-purple-400">
             {statusText}
           </span>
         </div>
 
-        <h4 className="mt-3 line-clamp-2 text-sm font-semibold leading-6 text-white transition-colors duration-200 group-hover:text-purple-300">
-          {hackathon.name}
-        </h4>
+        {/* Always reserve 2 lines for description */}
+        <p className="mt-2 min-h-[2.5rem] line-clamp-2 text-xs leading-5 text-white/45">
+          {hackathon.description ? clampText(hackathon.description) : "\u00A0"}
+        </p>
 
-        {hackathon.description ? (
-          <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/45">
-            {clampText(hackathon.description)}
-          </p>
-        ) : null}
-
-        <div className="mt-4 flex items-center gap-6 overflow-hidden text-xs text-white/55">
+        {/* Push meta row to bottom for consistent alignment */}
+        <div className="mt-auto flex items-center gap-6 overflow-hidden pt-4 text-xs text-white/55">
           <span className="min-w-0 truncate">
             Starts · {formatDateTime(hackathon.start_time)}
           </span>
@@ -381,7 +414,7 @@ function ListSkeleton() {
         {Array.from({ length: 5 }).map((_, index) => (
           <div
             key={index}
-            className="min-h-[250px] rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+            className="min-h-[285px] rounded-2xl border border-white/10 bg-white/[0.03] p-4"
           >
             <div className="h-[140px] w-full animate-pulse rounded-2xl bg-white/10 md:h-[150px]" />
 
@@ -391,13 +424,18 @@ function ListSkeleton() {
                 <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
               </div>
 
-              <div className="h-7 w-28 animate-pulse rounded-full bg-white/10" />
+              <div className="h-7 w-20 animate-pulse rounded-full bg-white/10" />
             </div>
 
-            <div className="mt-3 h-4 w-4/5 animate-pulse rounded bg-white/10" />
-            <div className="mt-2 h-4 w-3/5 animate-pulse rounded bg-white/10" />
-            <div className="mt-2 h-4 w-full animate-pulse rounded bg-white/10" />
-            <div className="mt-5 h-3 w-full animate-pulse rounded bg-white/10" />
+            <div className="mt-3 flex items-start justify-between gap-3">
+              <div className="h-12 w-3/5 animate-pulse rounded bg-white/10" />
+              <div className="h-8 w-28 animate-pulse rounded-full bg-white/10" />
+            </div>
+
+            <div className="mt-2 h-10 w-full animate-pulse rounded bg-white/10" />
+            <div className="mt-auto pt-4">
+              <div className="h-3 w-full animate-pulse rounded bg-white/10" />
+            </div>
           </div>
         ))}
       </div>
