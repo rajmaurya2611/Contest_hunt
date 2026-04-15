@@ -1,3 +1,4 @@
+import BugBountySection from "../components/homepage/bugbounty";
 import ContestSection from "../components/homepage/contests";
 import HackathonSection from "../components/homepage/hackathons";
 import HeaderComponent from "../components/homepage/header";
@@ -10,6 +11,7 @@ export default function Homepage() {
     <LandingComponent/>
     <ContestSection/>
     <HackathonSection/>
+    <BugBountySection/>
     </>
   )
 }

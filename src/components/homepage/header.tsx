@@ -15,6 +15,8 @@ const HeaderComponent: React.FC = () => {
     const navItems = [
         { label: "Home", to: "/" },
         { label: "Contests", to: "/contests" },
+        { label: "Hackathons", to: "/hackathons" },
+        { label: "Bug Bounties", to: "/bug-bounties" },
     ];
 
     const linkBase =

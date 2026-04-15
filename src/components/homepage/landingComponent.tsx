@@ -334,9 +334,9 @@ export default function LandingComponent() {
             Contest <span className="text-white">again</span>
           </h1>
 
-          <p className="mt-5 text-white/80 text-sm md:text-base lg:text-xl text-left select-none">
+          <p className="font-rubik mt-5 text-white/80 text-sm md:text-base lg:text-xl text-left select-none">
             Real-time schedules for{" "}
-            <span className="font-bold text-[#8C45FF]">
+            <span className="font-bold text-purple-500">
               <Typewriter
                 component="span"
                 options={{
