@@ -1,20 +1,19 @@
 "use client";
 
-import {
+import React, {
   useEffect,
   useMemo,
   useState,
   type SyntheticEvent,
 } from "react";
-import { useRive, Layout, Fit, Alignment } from "@rive-app/react-webgl2";
-
-// ─── Rive config ──────────────────────────────────────────────────────────────
-const RIVE_SRC = "/magic-cat.riv";
-const RIVE_ARTBOARD = "WCT 01";
-const RIVE_ANIMATION = "CAT RUN";
+import { DotLottieReact } from "@lottiefiles/dotlottie-react";
 
 // Change if your main hackathon page route is different
 const HACKATHON_PAGE_HREF = "/hackathons";
+
+// Put your file here: public/animations/cat.lottie
+const LOTTIE_SRC = "/animations/programming and website-purple.lottie";
+// const LOTTIE_SRC = "/animations/Programming Computer.lottie";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -141,35 +140,13 @@ function clampText(text: string, max = 110) {
   return text.length > max ? `${text.slice(0, max).trim()}...` : text;
 }
 
-// ─── Cat Only Panel ───────────────────────────────────────────────────────────
+// ─── Lottie Panel ─────────────────────────────────────────────────────────────
 
 function CatOnlyPanel() {
-  const { rive, RiveComponent } = useRive({
-    src: RIVE_SRC,
-    artboard: RIVE_ARTBOARD,
-    animations: RIVE_ANIMATION,
-    autoplay: true,
-    layout: new Layout({
-      fit: Fit.Contain,
-      alignment: Alignment.Center,
-    }),
-  });
-
-  useEffect(() => {
-    if (!rive) return;
-
-    try {
-      rive.stop();
-      rive.play(RIVE_ANIMATION);
-    } catch (err) {
-      console.error("Rive play error:", err);
-    }
-  }, [rive]);
-
   return (
-    <div className="relative flex min-h-[70vh] items-center justify-center overflow-hidden rounded-[28px] p-0 lg:min-h-[82vh]">
-      <div className="relative z-10 h-[360px] w-full max-w-[360px] sm:h-[420px] sm:max-w-[420px] lg:h-[520px] lg:max-w-[520px]">
-        <RiveComponent className="h-full w-full" />
+    <div className="relative flex min-h-[70vh] items-center justify-center overflow-hidden p-0 lg:min-h-[82vh]">
+      <div className="relative z-10 h-[360px] w-full max-w-[360px] scale-x-[-1] sm:h-[420px] sm:max-w-[420px] lg:h-[520px] lg:max-w-[520px]">
+        <DotLottieReact src={LOTTIE_SRC} loop autoplay />
       </div>
     </div>
   );
@@ -195,13 +172,7 @@ function HackathonBanner({
     const img = e.currentTarget;
     const ratio = img.naturalWidth / img.naturalHeight;
 
-    // Smart fit:
-    // - no banner / fallback logo => contain
-    // - square-ish or ultra-wide images => contain
-    // - normal banner ratios => cover
-    const shouldContain =
-      !banner || imgError || ratio < 1.45 || ratio > 3.35;
-
+    const shouldContain = !banner || imgError || ratio < 1.45 || ratio > 3.35;
     setUseContain(shouldContain);
   }
 
@@ -213,9 +184,7 @@ function HackathonBanner({
   return (
     <div
       className={`relative h-[140px] w-full overflow-hidden rounded-2xl border border-white/10 md:h-[150px] ${
-        useContain
-          ? "bg-white/[0.06]"
-          : "bg-white/[0.04]"
+        useContain ? "bg-white/[0.06]" : "bg-white/[0.04]"
       }`}
     >
       <img
@@ -293,7 +262,6 @@ function HackathonListItem({
           alt={hackathon.name}
         />
 
-        {/* Platform row */}
         <div className="mt-4 flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <PlatformMiniLogo
@@ -319,7 +287,6 @@ function HackathonListItem({
           ) : null}
         </div>
 
-        {/* Title + status row */}
         <div className="mt-3 flex items-start justify-between gap-3">
           <h4 className="min-h-[3rem] min-w-0 flex-1 line-clamp-2 text-sm font-semibold leading-6 text-white transition-colors duration-200 group-hover:text-purple-300">
             {hackathon.name}
@@ -330,12 +297,10 @@ function HackathonListItem({
           </span>
         </div>
 
-        {/* Always reserve 2 lines for description */}
         <p className="mt-2 min-h-[2.5rem] line-clamp-2 text-xs leading-5 text-white/45">
           {hackathon.description ? clampText(hackathon.description) : "\u00A0"}
         </p>
 
-        {/* Push meta row to bottom for consistent alignment */}
         <div className="mt-auto flex items-center gap-6 overflow-hidden pt-4 text-xs text-white/55">
           <span className="min-w-0 truncate">
             Starts · {formatDateTime(hackathon.start_time)}
@@ -506,9 +471,7 @@ export default function HackathonSection() {
           <div className="grid gap-8 lg:min-h-[140vh] lg:grid-cols-3">
             <div>
               <div className="lg:sticky lg:top-24">
-                <div className="rounded-[28px] border border-white/10 bg-gradient-to-b from-[#321255] via-[#1a0d2b] to-[#050505]">
-                  <div className="h-[70vh] animate-pulse rounded-[28px] bg-white/5 lg:h-[82vh]" />
-                </div>
+                <div className="h-[70vh] lg:h-[82vh]" />
               </div>
             </div>
 
