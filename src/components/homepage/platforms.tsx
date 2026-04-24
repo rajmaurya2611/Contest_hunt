@@ -156,5 +156,6 @@ export default function PlatformCoveredMarquee() {
         </div>
       </div>
     </section>
+    
   );
 }
