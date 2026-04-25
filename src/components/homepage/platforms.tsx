@@ -113,7 +113,7 @@ export default function PlatformCoveredMarquee() {
         }
 
         .platform-marquee-track {
-          animation: platformMarquee 28s linear infinite;
+          animation: platformMarquee 35s linear infinite;
         }
 
         .platform-marquee-wrapper:hover .platform-marquee-track {
@@ -135,7 +135,7 @@ export default function PlatformCoveredMarquee() {
       <div className="relative z-10 mx-auto max-w-7xl">
         <div className="mb-10 text-center">
           <h2 className="text-4xl font-bold leading-tight tracking-tight text-white md:text-5xl">
-            Platforms <span className="text-[#8C45FF]">Covered</span>
+            Platforms <span className="text-purple-500">Covered</span>
           </h2>
 
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-white/45 md:text-base">

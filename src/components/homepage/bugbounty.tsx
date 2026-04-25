@@ -13,7 +13,7 @@ export default function BugBountySection() {
     >
       <div className="mx-auto max-w-7xl">
         <h2 className="mb-10 text-4xl font-bold leading-tight tracking-tight text-white md:text-5xl">
-          Bug <span className="text-[#8C45FF]">Bounties</span>
+          Bug <span className="text-purple-500">Bounties</span>
         </h2>
 
         <div className="flex flex-col items-center justify-center pt-12">

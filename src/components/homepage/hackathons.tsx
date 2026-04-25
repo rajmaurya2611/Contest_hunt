@@ -463,7 +463,7 @@ export default function HackathonSection() {
       <div className="mx-auto max-w-7xl">
         <div className="mb-12 text-center">
           <h2 className="text-4xl font-bold leading-tight tracking-tight text-white md:text-5xl">
-            Trending <span className="text-[#8C45FF]">Hackathons</span>
+            Trending <span className="text-purple-500">Hackathons</span>
           </h2>
         </div>
 

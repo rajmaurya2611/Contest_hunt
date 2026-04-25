@@ -94,7 +94,7 @@ export default function ContestStats() {
       <div className="mx-auto max-w-7xl">
         <div className="mb-12 text-center">
           <h2 className="text-4xl font-bold leading-tight tracking-tight text-white md:text-5xl">
-            Our <span className="text-[#8C45FF]">Impact</span>
+            Our <span className="text-purple-500">Impact</span>
           </h2>
         </div>
 
