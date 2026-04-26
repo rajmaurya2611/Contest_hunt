@@ -5,6 +5,8 @@ import HeaderComponent from "../components/homepage/header";
 import LandingComponent from "../components/homepage/landingComponent";
 import PlatformCoveredMarquee from "../components/homepage/platforms";
 import ContestStats from "../components/homepage/stats";
+import ContactUs from "../components/homepage/contactus";
+import Footer from "../components/homepage/footer";
 
 export default function Homepage() {
   return (
@@ -16,6 +18,8 @@ export default function Homepage() {
     <HackathonSection/>
     <ContestStats/>
     <BugBountySection/>
+    <ContactUs/>
+    <Footer/>
     </>
   )
 }
