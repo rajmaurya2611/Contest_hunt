@@ -12,7 +12,7 @@ const Footer = () => {
           </p>
 
           <p className="text-xs text-white/40">
-            Made with <span className="text-[#8C45FF]">love</span> in India by{" "}
+            Made with love in<span className="font-bold text-purple-500"> India </span>by{" "}
             <span className="font-semibold text-white/60">Team Miraidyo</span>
           </p>
         </div>
