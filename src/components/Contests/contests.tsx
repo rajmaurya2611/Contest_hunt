@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,63 +19,83 @@ interface Contest {
 type Status = "live" | "upcoming" | "ended";
 type Tab = Status;
 
+type PlatformMeta = {
+  label: string;
+  text: string;
+  dot: string;
+  logo: string;
+  pill: string;
+};
+
 // ─── Platform config ──────────────────────────────────────────────────────────
 
-const PLATFORM_META: Record<
-  string,
-  { label: string; badge: string; dot: string; icon: string }
-> = {
+const PLATFORM_META: Record<string, PlatformMeta> = {
   leetcode: {
     label: "LeetCode",
-    badge: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
+    text: "text-yellow-400",
     dot: "bg-yellow-400",
-    icon: "/icons/leetcode.png",
+    logo: "/icons/leetcode.png",
+    pill: "border-yellow-500/30 bg-yellow-500/10 text-yellow-400",
   },
   codeforces: {
     label: "Codeforces",
-    badge: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+    text: "text-blue-400",
     dot: "bg-blue-400",
-    icon: "/icons/codeforces.png",
+    logo: "/icons/codeforces.png",
+    pill: "border-blue-500/30 bg-blue-500/10 text-blue-400",
   },
   codechef: {
     label: "CodeChef",
-    badge: "bg-orange-500/10 text-orange-400 border-orange-500/30",
+    text: "text-orange-400",
     dot: "bg-orange-400",
-    icon: "/icons/codechef.png",
+    logo: "/icons/codechef.png",
+    pill: "border-orange-500/30 bg-orange-500/10 text-orange-400",
   },
   atcoder: {
     label: "AtCoder",
-    badge: "bg-teal-500/10 text-teal-400 border-teal-500/30",
+    text: "text-teal-400",
     dot: "bg-teal-400",
-    icon: "/icons/atcoder.png",
+    logo: "/icons/atcoder.png",
+    pill: "border-teal-500/30 bg-teal-500/10 text-teal-400",
   },
   hackerearth: {
     label: "HackerEarth",
-    badge: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
+    text: "text-indigo-400",
     dot: "bg-indigo-400",
-    icon: "/icons/hackerearth.png",
+    logo: "/icons/hackerearth.png",
+    pill: "border-indigo-500/30 bg-indigo-500/10 text-indigo-400",
   },
   csacademy: {
     label: "CS Academy",
-    badge: "bg-red-500/10 text-red-400 border-red-500/30",
+    text: "text-red-400",
     dot: "bg-red-400",
-    icon: "/icons/csacademy.png",
+    logo: "/icons/csacademy.png",
+    pill: "border-red-500/30 bg-red-500/10 text-red-400",
   },
   code360: {
     label: "Code360",
-    badge: "bg-rose-500/10 text-rose-400 border-rose-500/30",
+    text: "text-rose-400",
     dot: "bg-rose-400",
-    icon: "/icons/code360.png",
+    logo: "/icons/code360.png",
+    pill: "border-rose-500/30 bg-rose-500/10 text-rose-400",
+  },
+  geeksforgeeks: {
+    label: "GeeksforGeeks",
+    text: "text-green-400",
+    dot: "bg-green-400",
+    logo: "/icons/geeksforgeeks.png",
+    pill: "border-green-500/30 bg-green-500/10 text-green-400",
   },
 };
 
-function getPlatform(p: string) {
+function getPlatform(platform: string): PlatformMeta {
   return (
-    PLATFORM_META[p.toLowerCase()] ?? {
-      label: p,
-      badge: "bg-purple-500/10 text-purple-400 border-purple-500/30",
+    PLATFORM_META[platform.toLowerCase()] ?? {
+      label: platform,
+      text: "text-purple-400",
       dot: "bg-purple-400",
-      icon: "/icons/default.png",
+      logo: "/icons/default.png",
+      pill: "border-purple-500/30 bg-purple-500/10 text-purple-400",
     }
   );
 }
@@ -84,16 +104,20 @@ function getPlatform(p: string) {
 
 function getStatus(start: number, end: number): Status {
   const now = Math.floor(Date.now() / 1000);
+
   if (now >= start && now <= end) return "live";
   if (now < start) return "upcoming";
+
   return "ended";
 }
 
-function formatDuration(s: number) {
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
+function formatDuration(seconds: number) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+
   if (h === 0) return `${m}m`;
   if (m === 0) return `${h}h`;
+
   return `${h}h ${m}m`;
 }
 
@@ -110,13 +134,65 @@ function formatDateTime(unix: number) {
 
 function timeUntil(unix: number) {
   const diff = unix * 1000 - Date.now();
+
   if (diff <= 0) return "Started";
+
   const d = Math.floor(diff / 86400000);
   const h = Math.floor((diff % 86400000) / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
+
   if (d > 0) return `in ${d}d ${h}h`;
   if (h > 0) return `in ${h}h ${m}m`;
-  return `in ${m}m`;
+
+  return `in ${Math.max(m, 0)}m`;
+}
+
+function timeLeft(unix: number) {
+  const diff = unix * 1000 - Date.now();
+
+  if (diff <= 0) return "Ending soon";
+
+  const d = Math.floor(diff / 86400000);
+  const h = Math.floor((diff % 86400000) / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+
+  if (d > 0) return `${d}d ${h}h left`;
+  if (h > 0) return `${h}h ${m}m left`;
+
+  return `${Math.max(m, 0)}m left`;
+}
+
+// ─── Platform Logo ────────────────────────────────────────────────────────────
+
+function PlatformLogo({
+  src,
+  alt,
+  dotClass,
+}: {
+  src: string;
+  alt: string;
+  dotClass: string;
+}) {
+  const [imgError, setImgError] = useState(false);
+
+  if (imgError) {
+    return (
+      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] transition-transform duration-300 group-hover:scale-110">
+        <span className={`h-3.5 w-3.5 rounded-full ${dotClass}`} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] p-3 transition-transform duration-300 group-hover:scale-110">
+      <img
+        src={src}
+        alt={alt}
+        className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-110"
+        onError={() => setImgError(true)}
+      />
+    </div>
+  );
 }
 
 // ─── Contest Card ─────────────────────────────────────────────────────────────
@@ -125,59 +201,97 @@ function ContestCard({ contest }: { contest: Contest }) {
   const meta = getPlatform(contest.platform);
   const status = getStatus(contest.start_time, contest.end_time);
 
-  const statusBadge = {
-    live: "bg-green-500/10 text-green-400 border-green-500/40",
-    upcoming: "bg-purple-500/10 text-purple-400 border-purple-500/40",
-    ended: "bg-white/5 text-white/30 border-white/10",
-  }[status];
+  const statusBadge: Record<Status, string> = {
+    live: "border-red-500/30 bg-red-500/10 text-red-400",
+    upcoming: "border-purple-500/30 bg-purple-500/10 text-purple-400",
+    ended: "border-white/10 bg-white/[0.04] text-white/35",
+  };
+
+  const statusDot: Record<Status, string> = {
+    live: "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]",
+    upcoming: "bg-purple-500",
+    ended: "bg-white/25",
+  };
+
+  const timingLabel =
+    status === "live"
+      ? timeLeft(contest.end_time)
+      : status === "upcoming"
+        ? timeUntil(contest.start_time)
+        : "Completed";
 
   return (
     <a
       href={contest.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="group relative flex flex-col gap-3 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-5 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/50 hover:shadow-[0_8px_32px_rgba(140,69,255,0.15)]"
+      className="group relative block min-h-[210px] rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-5 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]"
     >
       {status === "live" && (
-        <div className="absolute inset-x-0 top-0 h-px rounded-t-2xl bg-gradient-to-r from-green-400 via-green-400/50 to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-px rounded-t-2xl bg-gradient-to-r from-red-500 via-red-500/50 to-transparent" />
       )}
 
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex flex-col items-start">
-          <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/5 p-2 transition-transform duration-300 group-hover:scale-110">
-            <img
-              src={meta.icon}
-              alt={meta.label}
-              className="h-full w-full object-contain"
-            />
+      <div className="flex items-start gap-4">
+        <PlatformLogo src={meta.logo} alt={meta.label} dotClass={meta.dot} />
+
+        <div className="min-w-0 flex-1">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+              <span
+                className={`truncate text-[0.72rem] font-semibold uppercase tracking-[0.15em] ${meta.text}`}
+              >
+                {meta.label}
+              </span>
+            </div>
+
+            <span
+              className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1 text-[0.65rem] font-bold uppercase tracking-widest ${statusBadge[status]}`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${statusDot[status]}`} />
+              {status}
+            </span>
           </div>
-          <span className="mt-2 text-xs font-medium text-white">
-            {meta.label}
+
+          <h3 className="line-clamp-2 text-[0.98rem] font-semibold leading-6 text-white transition-colors duration-200 group-hover:text-purple-300">
+            {contest.name}
+          </h3>
+        </div>
+      </div>
+
+      <div className="mt-6 space-y-3 border-t border-white/10 pt-4 text-xs text-white/50">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-white/35">Starts</span>
+          <span className="min-w-0 truncate text-right text-white/60">
+            {formatDateTime(contest.start_time)}
           </span>
         </div>
 
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[0.68rem] font-bold uppercase tracking-widest ${statusBadge}`}
-        >
-          {status === "live" && (
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-400" />
-          )}
-          {status}
-        </span>
-      </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-white/35">Duration</span>
+          <span className="text-white/60">{formatDuration(contest.duration)}</span>
+        </div>
 
-      <h3 className="m-0 font-rubik text-[0.95rem] font-semibold leading-snug text-white line-clamp-2">
-        {contest.name}
-      </h3>
-
-      <div className="flex flex-wrap gap-x-4 gap-y-1 font-rubik text-xs text-white/50">
-        <span>🕐 {formatDateTime(contest.start_time)}</span>
-        <span>⏱ {formatDuration(contest.duration)}</span>
-        {status === "upcoming" && (
-          <span className="font-semibold text-purple-400">
-            🚀 {timeUntil(contest.start_time)}
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-white/35">
+            {status === "live"
+              ? "Ends"
+              : status === "upcoming"
+                ? "Timeline"
+                : "Status"}
           </span>
-        )}
+          <span
+            className={
+              status === "live"
+                ? "font-semibold text-red-400"
+                : status === "upcoming"
+                  ? "font-semibold text-purple-400"
+                  : "font-semibold text-white/35"
+            }
+          >
+            {timingLabel}
+          </span>
+        </div>
       </div>
     </a>
   );
@@ -187,10 +301,26 @@ function ContestCard({ contest }: { contest: Contest }) {
 
 function SkeletonCard() {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-5">
-      <div className="h-5 w-24 animate-pulse rounded-md bg-white/8" />
-      <div className="h-5 w-3/4 animate-pulse rounded-md bg-white/8" />
-      <div className="h-4 w-1/2 animate-pulse rounded-md bg-white/8" />
+    <div className="min-h-[210px] rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-5">
+      <div className="flex items-start gap-4">
+        <div className="h-16 w-16 animate-pulse rounded-2xl bg-white/10" />
+
+        <div className="flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
+            <div className="h-7 w-20 animate-pulse rounded-full bg-white/10" />
+          </div>
+
+          <div className="mt-4 h-4 w-4/5 animate-pulse rounded bg-white/10" />
+          <div className="mt-2 h-4 w-3/5 animate-pulse rounded bg-white/10" />
+        </div>
+      </div>
+
+      <div className="mt-6 space-y-3 border-t border-white/10 pt-4">
+        <div className="h-3 w-full animate-pulse rounded bg-white/10" />
+        <div className="h-3 w-4/5 animate-pulse rounded bg-white/10" />
+        <div className="h-3 w-3/5 animate-pulse rounded bg-white/10" />
+      </div>
     </div>
   );
 }
@@ -210,45 +340,76 @@ export default function ContestSection() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(import.meta.env.VITE_CONTESTS_API_URL!);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const apiUrl = import.meta.env.VITE_CONTESTS_API_URL;
+
+        if (!apiUrl) {
+          throw new Error("VITE_CONTESTS_API_URL is not defined");
+        }
+
+        const res = await fetch(apiUrl);
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
         const data: Contest[] = await res.json();
-        setContests(data);
+        setContests(Array.isArray(data) ? data : []);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Failed to fetch");
+        setError(err instanceof Error ? err.message : "Failed to fetch contests");
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  const platforms = ["all", ...Array.from(new Set(contests.map((c) => c.platform)))];
+  const platforms = useMemo(() => {
+    return ["all", ...Array.from(new Set(contests.map((c) => c.platform)))];
+  }, [contests]);
 
-  const filtered = contests.filter((c) => {
-    const s = getStatus(c.start_time, c.end_time);
-    return (
-      s === activeTab &&
-      (activePlatform === "all" || c.platform === activePlatform) &&
-      (search === "" ||
-        c.name.toLowerCase().includes(search.toLowerCase()) ||
-        c.platform.toLowerCase().includes(search.toLowerCase()))
-    );
-  });
+  const counts = useMemo<Record<Tab, number>>(() => {
+    return {
+      live: contests.filter((c) => getStatus(c.start_time, c.end_time) === "live")
+        .length,
+      upcoming: contests.filter(
+        (c) => getStatus(c.start_time, c.end_time) === "upcoming",
+      ).length,
+      ended: contests.filter((c) => getStatus(c.start_time, c.end_time) === "ended")
+        .length,
+    };
+  }, [contests]);
 
-  const counts: Record<Tab, number> = {
-    live: contests.filter((c) => getStatus(c.start_time, c.end_time) === "live").length,
-    upcoming: contests.filter((c) => getStatus(c.start_time, c.end_time) === "upcoming").length,
-    ended: contests.filter((c) => getStatus(c.start_time, c.end_time) === "ended").length,
-  };
+  const filtered = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    return contests
+      .filter((contest) => {
+        const status = getStatus(contest.start_time, contest.end_time);
+
+        const matchesTab = status === activeTab;
+        const matchesPlatform =
+          activePlatform === "all" || contest.platform === activePlatform;
+        const matchesSearch =
+          normalizedSearch.length === 0 ||
+          contest.name.toLowerCase().includes(normalizedSearch) ||
+          contest.platform.toLowerCase().includes(normalizedSearch);
+
+        return matchesTab && matchesPlatform && matchesSearch;
+      })
+      .sort((a, b) => {
+        if (activeTab === "live") return a.end_time - b.end_time;
+        if (activeTab === "upcoming") return a.start_time - b.start_time;
+        return b.end_time - a.end_time;
+      });
+  }, [activePlatform, activeTab, contests, search]);
 
   const tabActive: Record<Tab, string> = {
-    live: "border-green-400 bg-green-400/10 text-green-400",
-    upcoming: "border-purple-500 bg-purple-500/10 text-purple-400",
-    ended: "border-white/30 bg-white/5 text-white/60",
+    live: "border-red-500/40 bg-red-500/10 text-red-400",
+    upcoming: "border-purple-500/40 bg-purple-500/10 text-purple-400",
+    ended: "border-white/20 bg-white/[0.04] text-white/55",
   };
 
   const countActive: Record<Tab, string> = {
-    live: "bg-green-400 text-black",
+    live: "bg-red-500 text-white",
     upcoming: "bg-purple-500 text-white",
     ended: "bg-white/20 text-white",
   };
@@ -256,53 +417,60 @@ export default function ContestSection() {
   return (
     <section
       id="contests"
-      className="min-h-screen bg-gradient-to-b from-[#2C114A] to-[#020202] px-5 py-20 font-rubik"
+      className="relative min-h-screen overflow-hidden bg-[#020202] px-5 py-20 font-rubik md:px-8 lg:px-10"
     >
-      <div className="mx-auto max-w-5xl">
-        {/* ── Heading ───────────────────────────────── */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-1/2 top-0 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-purple-700/20 blur-[120px]" />
+        <div className="absolute bottom-20 right-0 h-[320px] w-[320px] rounded-full bg-[#8C45FF]/10 blur-[120px]" />
+      </div>
+
+      <div className="relative z-10 mx-auto max-w-7xl">
+        {/* Heading */}
         <div className="mb-12 text-center">
-          <p className="mb-3 text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-purple-400">
+          {/* <p className="mb-3 text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-purple-400">
             All Platforms · Real-time
-          </p>
-          <h2 className="text-4xl font-bold leading-tight tracking-tight text-white md:text-5xl">
+          </p> */}
+
+          {/* <h2 className="text-4xl font-bold leading-tight tracking-tight text-white md:text-5xl">
             Upcoming <span className="text-[#8C45FF]">Contests</span>
-          </h2>
-          <p className="mt-3 text-sm text-white/50">
-            Never miss a competitive programming contest again.
+          </h2> */}
+
+          <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-white/45">
+            Track live, upcoming, and completed coding contests across major
+            competitive programming platforms.
           </p>
         </div>
 
-        {/* ── Search ────────────────────────────────── */}
+        {/* Search */}
         <div className="mb-8 flex justify-center">
-          <div className="relative w-full max-w-md">
-            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base text-white/30">
-              🔍
-            </span>
+          <div className="relative w-full max-w-xl">
             <input
               type="text"
-              placeholder="Search contests or platforms…"
+              placeholder="Search contests or platforms..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-xl border border-white/15 bg-white/5 py-2.5 pl-11 pr-4 text-sm text-white placeholder:text-white/30 outline-none transition duration-200 focus:border-purple-500 focus:bg-white/[0.08]"
+              className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm text-white outline-none transition-all duration-200 placeholder:text-white/30 focus:border-purple-500/50 focus:bg-white/[0.06] focus:shadow-[0_0_0_4px_rgba(140,69,255,0.08)]"
             />
           </div>
         </div>
 
-        {/* ── Status Tabs ───────────────────────────── */}
+        {/* Status Tabs */}
         <div className="mb-6 flex flex-wrap justify-center gap-2">
           {TABS.map((tab) => {
             const isActive = activeTab === tab;
+
             return (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`flex cursor-pointer items-center gap-2 rounded-xl border px-5 py-2 text-sm font-medium capitalize transition-all duration-200 ${
+                className={`flex cursor-pointer items-center gap-2 rounded-2xl border px-5 py-2.5 text-sm font-semibold capitalize transition-all duration-200 ${
                   isActive
                     ? tabActive[tab]
-                    : "border-white/15 text-white/40 hover:border-white/30 hover:text-white/60"
+                    : "border-white/10 bg-white/[0.03] text-white/40 hover:border-purple-500/30 hover:bg-white/[0.05] hover:text-white/70"
                 }`}
               >
                 {tab}
+
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-bold transition-all ${
                     isActive ? countActive[tab] : "bg-white/10 text-white/40"
@@ -315,84 +483,86 @@ export default function ContestSection() {
           })}
         </div>
 
-        {/* ── Platform Pills ────────────────────────── */}
-        <div className="mb-10 flex flex-wrap justify-center gap-5">
-          {platforms.map((p) => {
-            const isActive = activePlatform === p;
+        {/* Platform Pills */}
+        <div className="mb-10 flex flex-wrap justify-center gap-3">
+          {platforms.map((platform) => {
+            const isActive = activePlatform === platform;
+
             const meta =
-              p === "all"
+              platform === "all"
                 ? {
                     label: "All Platforms",
-                    badge: "bg-purple-500/10 text-purple-400 border-purple-500/30",
-                    icon: "",
+                    text: "text-purple-400",
+                    dot: "bg-purple-400",
+                    logo: "",
+                    pill: "border-purple-500/30 bg-purple-500/10 text-purple-400",
                   }
-                : getPlatform(p);
+                : getPlatform(platform);
 
             return (
               <button
-                key={p}
-                onClick={() => setActivePlatform(p)}
-                className={`group flex min-w-[90px] cursor-pointer flex-col items-center rounded-2xl border px-4 py-3 transition-all duration-300 ${
+                key={platform}
+                onClick={() => setActivePlatform(platform)}
+                className={`group flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 transition-all duration-300 ${
                   isActive
-                    ? `${meta.badge} shadow-[0_8px_24px_rgba(140,69,255,0.18)]`
-                    : "border-white/15 bg-white/[0.03] text-white/40 hover:border-white/30 hover:bg-white/[0.05]"
+                    ? `${meta.pill} shadow-[0_8px_24px_rgba(140,69,255,0.14)]`
+                    : "border-white/10 bg-white/[0.03] text-white/45 hover:border-purple-500/30 hover:bg-white/[0.05] hover:text-white/70"
                 }`}
               >
                 <div
-                  className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border p-2 transition-transform duration-300 group-hover:scale-110 ${
+                  className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border p-1.5 transition-transform duration-300 group-hover:scale-110 ${
                     isActive
                       ? "border-purple-500/40 bg-white/10"
-                      : "border-white/10 bg-white/5"
+                      : "border-white/10 bg-white/[0.04]"
                   }`}
                 >
-                  {p === "all" ? (
-                    <span className="text-2xl">🌐</span>
+                  {platform === "all" ? (
+                    <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
                   ) : (
                     <img
-                      src={meta.icon}
+                      src={meta.logo}
                       alt={meta.label}
                       className="h-full w-full object-contain"
                     />
                   )}
                 </div>
 
-                <span className="mt-2 text-center text-xs font-medium text-white">
-                  {meta.label}
-                </span>
+                <span className="text-xs font-semibold">{meta.label}</span>
               </button>
             );
           })}
         </div>
 
-        {/* ── Contest Grid ──────────────────────────── */}
+        {/* Content */}
         {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <SkeletonCard key={i} />
+          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <SkeletonCard key={index} />
             ))}
           </div>
         ) : error ? (
-          <div className="py-20 text-center text-sm text-red-400">
-            ⚠️ {error}
+          <div className="rounded-3xl border border-red-500/20 bg-red-500/10 px-6 py-10 text-center text-sm text-red-400">
+            {error}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="py-24 text-center text-white/30">
-            <div className="mb-3 text-4xl">🏆</div>
-            <p className="text-sm">No contests found.</p>
+          <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 px-6 py-20 text-center">
+            <p className="text-lg font-semibold text-white">No contests found</p>
+            <p className="mt-2 text-sm text-white/40">
+              Try changing the status tab, platform filter, or search keyword.
+            </p>
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((c) => (
-              <ContestCard key={c.id} contest={c} />
+          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+            {filtered.map((contest) => (
+              <ContestCard key={contest.id} contest={contest} />
             ))}
           </div>
         )}
 
-        {/* ── Footer ────────────────────────────────── */}
         {!loading && !error && (
-          <p className="mt-10 text-center text-xs text-white/20">
-            Showing {filtered.length} contest
-            {filtered.length !== 1 ? "s" : ""} · Data refreshes on reload
+          <p className="mt-10 text-center text-xs text-white/25">
+            Showing {filtered.length} contest{filtered.length !== 1 ? "s" : ""} ·
+            Data refreshes on reload
           </p>
         )}
       </div>
