@@ -346,7 +346,7 @@ export default function LandingComponent() {
                   delay: 60,
                   deleteSpeed: 35,
                   cursor: "|",
-                  wrapperClassName: "inline text-[#8C45FF]",
+                  wrapperClassName: "inline text-purple-500",
                   cursorClassName: "",
                 }}
               />
