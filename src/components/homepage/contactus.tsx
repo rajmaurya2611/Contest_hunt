@@ -53,7 +53,8 @@ export default function ContactUs() {
         <div className="grid lg:grid-cols-2 lg:items-center">
           {/* Left Lottie */}
           <div className="flex justify-center lg:justify-start">
-            <div className="w-full max-w-[420px] md:h-[340px] md:max-w-[520px]">
+            {/* <div className="w-full max-w-[420px] md:h-[340px] md:max-w-[520px]"> */}
+            <div className="w-full max-w-[520px] md:h-[520px] md:max-w-[520px]">
               <DotLottieReact src={SEND_LOTTIE_SRC} loop autoplay />
             </div>
           </div>
