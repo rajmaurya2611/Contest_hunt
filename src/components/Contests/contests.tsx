@@ -188,6 +188,7 @@ function getMonthLabel(date: Date) {
     year: "numeric",
   });
 }
+
 //normal calender
 function getCalendarDays(monthDate: Date) {
   const year = monthDate.getFullYear();
@@ -325,18 +326,64 @@ function PlatformLogo({
   );
 }
 
+// ─── Share Config ─────────────────────────────────────────────────────────────
+
+const APP_DOWNLOAD_URL = "https://your-app-download-link.com";
+const BRAND_PAGE_NAME = "Contest Calendar";
+
+async function shareContest(contest: Contest) {
+  const meta = getPlatform(contest.platform);
+
+  const pageUrl =
+    typeof window !== "undefined" ? window.location.href : APP_DOWNLOAD_URL;
+
+  const shareTitle = `${contest.name} on ${meta.label}`;
+
+  const shareMessage = `Hey, check out this contest: ${contest.name}
+
+Platform: ${meta.label}
+Starts: ${formatDateTime(contest.start_time)}
+Duration: ${formatDuration(contest.duration)}
+
+I found it on ${BRAND_PAGE_NAME}. You can track upcoming coding contests, visit contest links, and add them to your calendar easily.
+
+Download the app here:
+${APP_DOWNLOAD_URL}
+
+Explore more contests:
+${pageUrl}`;
+
+  try {
+    if (typeof navigator !== "undefined" && navigator.share) {
+      await navigator.share({
+        title: shareTitle,
+        text: shareMessage,
+        url: pageUrl,
+      });
+
+      return;
+    }
+
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      await navigator.clipboard.writeText(shareMessage);
+      window.alert("Contest share message copied to clipboard!");
+      return;
+    }
+
+    window.alert("Sharing is not supported on this browser.");
+  } catch (error) {
+    console.error("[ContestSection] Failed to share contest:", error);
+  }
+}
+
+
 // ─── Contest Card ─────────────────────────────────────────────────────────────
 
-function ContestCard({
-  contest,
-  onDetails,
-}: {
-  contest: Contest;
-  onDetails: (contest: Contest) => void;
-}) {
+function ContestCard({ contest }: { contest: Contest }) {
   const meta = getPlatform(contest.platform);
   const status = getStatus(contest.start_time, contest.end_time);
   const styles = STATUS_STYLES[status];
+  const googleCalendarUrl = getGoogleCalendarUrl(contest);
 
   const timingLabel =
     status === "live"
@@ -404,23 +451,32 @@ function ContestCard({
         </div>
       </div>
 
-      <div className="mt-5 flex gap-2">
-        <button
-          type="button"
-          onClick={() => onDetails(contest)}
-          className="inline-flex flex-1 items-center justify-center rounded-2xl border border-purple-500/30 bg-purple-500/10 px-4 py-2.5 text-sm font-semibold text-purple-300 transition-all duration-200 hover:bg-purple-500/15"
+      <div className="mt-5 grid grid-cols-3 gap-2">
+        <a
+          href={googleCalendarUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center rounded-2xl border border-purple-500/30 bg-purple-500/10 px-3 py-2.5 text-center text-[0.72rem] font-semibold text-purple-300 no-underline transition-all duration-200 hover:bg-purple-500/15 sm:text-xs"
         >
-          See Details
-        </button>
+          Add Calendar
+        </a>
 
         <a
           href={contest.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-semibold text-white/55 no-underline transition-all duration-200 hover:border-white/20 hover:bg-white/[0.07] hover:text-white"
+          className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-center text-[0.72rem] font-semibold text-white/60 no-underline transition-all duration-200 hover:border-white/20 hover:bg-white/[0.07] hover:text-white sm:text-xs"
         >
           Visit
         </a>
+
+        <button
+          type="button"
+          onClick={() => shareContest(contest)}
+          className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-center text-[0.72rem] font-semibold text-white/60 transition-all duration-200 hover:border-purple-500/30 hover:bg-purple-500/10 hover:text-purple-300 sm:text-xs"
+        >
+          Share
+        </button>
       </div>
     </article>
   );
@@ -520,6 +576,21 @@ function ContestCalendar({
 
     return map;
   }, [contests]);
+
+  const contestRows = useMemo(() => {
+    const rows: Record<number, boolean> = {};
+
+    days.forEach((day, index) => {
+      const rowIndex = Math.floor(index / 7);
+      const key = toDateKey(day);
+
+      if ((contestsByDate[key] ?? []).length > 0) {
+        rows[rowIndex] = true;
+      }
+    });
+
+    return rows;
+  }, [days, contestsByDate]);
 
   const goToPreviousMonth = () => {
     const next = new Date(month);
@@ -629,13 +700,15 @@ function ContestCalendar({
       </div>
 
       <div className="grid grid-cols-7 overflow-hidden rounded-2xl border border-white/10 transition-all duration-500 ease-out">
-        {days.map((day) => {
+        {days.map((day, index) => {
           const key = toDateKey(day);
           const dayContests = contestsByDate[key] ?? [];
           const isFocusedDay = focusedDateKey === key;
+          const rowIndex = Math.floor(index / 7);
+          const rowHasContest = contestRows[rowIndex];
 
           const visibleLimit =
-          expanded && isFocusedDay ? dayContests.length : expanded ? 3 : 2;
+            expanded && isFocusedDay ? dayContests.length : expanded ? 3 : 2;
 
           const visibleContests = dayContests.slice(0, visibleLimit);
           const hiddenCount = dayContests.length - visibleContests.length;
@@ -644,7 +717,11 @@ function ContestCalendar({
             <div
               key={key}
               className={`border-b border-r border-white/10 p-1.5 transition-all duration-500 ease-out ${
-                expanded ? "min-h-[118px] md:p-2" : "min-h-[82px]"
+                expanded
+                  ? "min-h-[118px] md:p-2"
+                  : rowHasContest
+                    ? "min-h-[104px]"
+                    : "min-h-[56px]"
               } ${
                 isFocusedDay
                   ? "bg-purple-500/[0.08] ring-1 ring-purple-500/30"
@@ -1153,11 +1230,7 @@ export default function ContestSection() {
                   }
                 >
                   {filteredContests.map((contest) => (
-                    <ContestCard
-                      key={contest.id}
-                      contest={contest}
-                      onDetails={setSelectedContest}
-                    />
+                    <ContestCard key={contest.id} contest={contest} />
                   ))}
                 </div>
               )}
