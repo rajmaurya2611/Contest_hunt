@@ -189,34 +189,13 @@ function getMonthLabel(date: Date) {
   });
 }
 //normal calender
-// function getCalendarDays(monthDate: Date) {
-//   const year = monthDate.getFullYear();
-//   const month = monthDate.getMonth();
-
-//   const firstDay = new Date(year, month, 1);
-//   const calendarStart = new Date(firstDay);
-//   calendarStart.setDate(firstDay.getDate() - firstDay.getDay());
-
-//   return Array.from({ length: 42 }, (_, index) => {
-//     const day = new Date(calendarStart);
-//     day.setDate(calendarStart.getDate() + index);
-//     return day;
-//   });
-// }
-
-//current week on top
 function getCalendarDays(monthDate: Date) {
-  const today = new Date();
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
 
-  const isCurrentMonth =
-    monthDate.getMonth() === today.getMonth() &&
-    monthDate.getFullYear() === today.getFullYear();
-
-  const calendarStart = isCurrentMonth
-    ? new Date(today)
-    : new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
-
-  calendarStart.setDate(calendarStart.getDate() - calendarStart.getDay());
+  const firstDay = new Date(year, month, 1);
+  const calendarStart = new Date(firstDay);
+  calendarStart.setDate(firstDay.getDate() - firstDay.getDay());
 
   return Array.from({ length: 42 }, (_, index) => {
     const day = new Date(calendarStart);
@@ -224,6 +203,27 @@ function getCalendarDays(monthDate: Date) {
     return day;
   });
 }
+
+//current week on top
+// function getCalendarDays(monthDate: Date) {
+//   const today = new Date();
+
+//   const isCurrentMonth =
+//     monthDate.getMonth() === today.getMonth() &&
+//     monthDate.getFullYear() === today.getFullYear();
+
+//   const calendarStart = isCurrentMonth
+//     ? new Date(today)
+//     : new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+
+//   calendarStart.setDate(calendarStart.getDate() - calendarStart.getDay());
+
+//   return Array.from({ length: 42 }, (_, index) => {
+//     const day = new Date(calendarStart);
+//     day.setDate(calendarStart.getDate() + index);
+//     return day;
+//   });
+// }
 
 function isSameMonth(a: Date, b: Date) {
   return a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
@@ -635,7 +635,7 @@ function ContestCalendar({
           const isFocusedDay = focusedDateKey === key;
 
           const visibleLimit =
-            expanded && isFocusedDay ? dayContests.length : expanded ? 3 : 1;
+          expanded && isFocusedDay ? dayContests.length : expanded ? 3 : 2;
 
           const visibleContests = dayContests.slice(0, visibleLimit);
           const hiddenCount = dayContests.length - visibleContests.length;
