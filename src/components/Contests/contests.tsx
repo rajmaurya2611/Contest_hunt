@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -188,14 +188,35 @@ function getMonthLabel(date: Date) {
     year: "numeric",
   });
 }
+//normal calender
+// function getCalendarDays(monthDate: Date) {
+//   const year = monthDate.getFullYear();
+//   const month = monthDate.getMonth();
 
+//   const firstDay = new Date(year, month, 1);
+//   const calendarStart = new Date(firstDay);
+//   calendarStart.setDate(firstDay.getDate() - firstDay.getDay());
+
+//   return Array.from({ length: 42 }, (_, index) => {
+//     const day = new Date(calendarStart);
+//     day.setDate(calendarStart.getDate() + index);
+//     return day;
+//   });
+// }
+
+//current week on top
 function getCalendarDays(monthDate: Date) {
-  const year = monthDate.getFullYear();
-  const month = monthDate.getMonth();
+  const today = new Date();
 
-  const firstDay = new Date(year, month, 1);
-  const calendarStart = new Date(firstDay);
-  calendarStart.setDate(firstDay.getDate() - firstDay.getDay());
+  const isCurrentMonth =
+    monthDate.getMonth() === today.getMonth() &&
+    monthDate.getFullYear() === today.getFullYear();
+
+  const calendarStart = isCurrentMonth
+    ? new Date(today)
+    : new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+
+  calendarStart.setDate(calendarStart.getDate() - calendarStart.getDay());
 
   return Array.from({ length: 42 }, (_, index) => {
     const day = new Date(calendarStart);
@@ -419,23 +440,40 @@ function CalendarPill({
   const status = getStatus(contest.start_time, contest.end_time);
   const styles = STATUS_STYLES[status];
   const meta = getPlatform(contest.platform);
+  const [imgError, setImgError] = useState(false);
 
   return (
     <button
       type="button"
-      onClick={() => onDetails(contest)}
-      className={`w-full truncate rounded-lg border px-2 py-1 text-left font-semibold transition-all duration-200 ${styles.pill} ${
+      onClick={(event) => {
+        event.stopPropagation();
+        onDetails(contest);
+      }}
+      className={`flex w-full items-center gap-1.5 truncate rounded-lg border px-2 py-1 text-left font-semibold transition-all duration-200 ${styles.pill} ${
         compact ? "text-[0.58rem]" : "text-[0.68rem]"
       }`}
       title={contest.name}
     >
       {!compact && (
-        <span className="mr-1 text-white/45">{formatTime(contest.start_time)}</span>
+        <span className="shrink-0 text-white/45">
+          {formatTime(contest.start_time)}
+        </span>
       )}
 
-      <span className={meta.text}>{compact ? meta.label.slice(0, 3) : meta.label}</span>
-      <span className="text-white/50"> · </span>
-      <span>{contest.name}</span>
+      {imgError ? (
+        <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
+      ) : (
+        <img
+          src={meta.logo}
+          alt={meta.label}
+          className={`shrink-0 object-contain ${
+            compact ? "h-3.5 w-3.5" : "h-4 w-4"
+          }`}
+          onError={() => setImgError(true)}
+        />
+      )}
+
+      <span className="truncate text-white/80">{contest.name}</span>
     </button>
   );
 }
@@ -446,16 +484,20 @@ function ContestCalendar({
   month,
   contests,
   expanded,
+  focusedDateKey,
   onExpandToggle,
   onMonthChange,
   onDetails,
+  onShowAllForDay,
 }: {
   month: Date;
   contests: Contest[];
   expanded: boolean;
+  focusedDateKey: string | null;
   onExpandToggle: () => void;
   onMonthChange: (nextMonth: Date) => void;
   onDetails: (contest: Contest) => void;
+  onShowAllForDay: (dateKey: string, day: Date) => void;
 }) {
   const days = useMemo(() => getCalendarDays(month), [month]);
 
@@ -495,12 +537,21 @@ function ContestCalendar({
     onMonthChange(new Date());
   };
 
-  const visibleLimit = expanded ? 3 : 1;
+  const handleCalendarSurfaceClick = () => {
+    onExpandToggle();
+  };
+
+  const stopCalendarToggle = (event: MouseEvent) => {
+    event.stopPropagation();
+  };
 
   return (
     <div
-      className={`rounded-[28px] border border-white/10 bg-gradient-to-br from-white/[0.035] to-purple-950/20 shadow-[0_20px_80px_rgba(0,0,0,0.35)] transition-all duration-300 ${
-        expanded ? "p-4 md:p-5" : "p-4"
+      onClick={handleCalendarSurfaceClick}
+      className={`cursor-pointer rounded-[28px] border border-white/10 bg-gradient-to-br from-white/[0.035] to-purple-950/20 shadow-[0_20px_80px_rgba(0,0,0,0.35)] transition-all duration-500 ease-out ${
+        expanded
+          ? "p-4 md:p-5 hover:border-purple-500/20"
+          : "p-4 hover:border-purple-500/35 hover:bg-white/[0.045]"
       }`}
     >
       <div className="mb-5 flex flex-col gap-4 border-b border-white/10 pb-5">
@@ -521,7 +572,10 @@ function ContestCalendar({
 
           <button
             type="button"
-            onClick={onExpandToggle}
+            onClick={(event) => {
+              stopCalendarToggle(event);
+              onExpandToggle();
+            }}
             className="rounded-xl border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs font-semibold text-purple-300 transition hover:bg-purple-500/15"
           >
             {expanded ? "Collapse" : "Expand"}
@@ -531,15 +585,21 @@ function ContestCalendar({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={goToPreviousMonth}
+            onClick={(event) => {
+              stopCalendarToggle(event);
+              goToPreviousMonth();
+            }}
             className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/60 transition hover:border-purple-500/30 hover:text-white"
           >
-            Prev
+            Prev Month
           </button>
 
           <button
             type="button"
-            onClick={goToToday}
+            onClick={(event) => {
+              stopCalendarToggle(event);
+              goToToday();
+            }}
             className="rounded-xl border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs font-semibold text-purple-300 transition hover:bg-purple-500/15"
           >
             Today
@@ -547,10 +607,13 @@ function ContestCalendar({
 
           <button
             type="button"
-            onClick={goToNextMonth}
+            onClick={(event) => {
+              stopCalendarToggle(event);
+              goToNextMonth();
+            }}
             className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/60 transition hover:border-purple-500/30 hover:text-white"
           >
-            Next
+            Next Month
           </button>
         </div>
       </div>
@@ -565,22 +628,29 @@ function ContestCalendar({
         ))}
       </div>
 
-      <div className="grid grid-cols-7 overflow-hidden rounded-2xl border border-white/10">
+      <div className="grid grid-cols-7 overflow-hidden rounded-2xl border border-white/10 transition-all duration-500 ease-out">
         {days.map((day) => {
           const key = toDateKey(day);
           const dayContests = contestsByDate[key] ?? [];
+          const isFocusedDay = focusedDateKey === key;
+
+          const visibleLimit =
+            expanded && isFocusedDay ? dayContests.length : expanded ? 3 : 1;
+
           const visibleContests = dayContests.slice(0, visibleLimit);
           const hiddenCount = dayContests.length - visibleContests.length;
 
           return (
             <div
               key={key}
-              className={`border-b border-r border-white/10 p-1.5 ${
+              className={`border-b border-r border-white/10 p-1.5 transition-all duration-500 ease-out ${
                 expanded ? "min-h-[118px] md:p-2" : "min-h-[82px]"
               } ${
-                isSameMonth(day, month)
-                  ? "bg-[#050505]/60"
-                  : "bg-black/30 text-white/20"
+                isFocusedDay
+                  ? "bg-purple-500/[0.08] ring-1 ring-purple-500/30"
+                  : isSameMonth(day, month)
+                    ? "bg-[#050505]/60"
+                    : "bg-black/30 text-white/20"
               }`}
             >
               <div className="mb-1.5 flex items-center justify-between">
@@ -618,7 +688,10 @@ function ContestCalendar({
                 {hiddenCount > 0 && (
                   <button
                     type="button"
-                    onClick={() => onDetails(dayContests[visibleLimit])}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onShowAllForDay(key, day);
+                    }}
                     className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-left text-[0.58rem] font-semibold text-white/35 transition hover:bg-white/[0.06] hover:text-white/55"
                   >
                     +{hiddenCount} more
@@ -792,6 +865,9 @@ export default function ContestSection() {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [selectedContest, setSelectedContest] = useState<Contest | null>(null);
   const [calendarExpanded, setCalendarExpanded] = useState(false);
+  const [focusedCalendarDate, setFocusedCalendarDate] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     (async () => {
@@ -857,6 +933,25 @@ export default function ContestSection() {
         return b.end_time - a.end_time;
       });
   }, [activePlatform, activeTab, contests, search]);
+
+  const handleCalendarExpandToggle = () => {
+    if (calendarExpanded) {
+      setFocusedCalendarDate(null);
+    }
+
+    setCalendarExpanded((prev) => !prev);
+  };
+
+  const handleCalendarMonthChange = (nextMonth: Date) => {
+    setCalendarMonth(nextMonth);
+    setFocusedCalendarDate(null);
+  };
+
+  const handleShowAllForDay = (dateKey: string, day: Date) => {
+    setCalendarExpanded(true);
+    setFocusedCalendarDate(dateKey);
+    setCalendarMonth(new Date(day.getFullYear(), day.getMonth(), 1));
+  };
 
   const tabActive: Record<Tab, string> = {
     live: "border-red-500/40 bg-red-500/10 text-red-400",
@@ -1000,25 +1095,31 @@ export default function ContestSection() {
             {error}
           </div>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-3">
+          <div className="grid gap-6 transition-all duration-500 ease-out lg:grid-cols-3">
             <aside
-              className={
+              className={`transition-all duration-500 ease-out ${
                 calendarExpanded
                   ? "lg:col-span-2"
                   : "lg:sticky lg:top-24 lg:col-span-1 lg:self-start"
-              }
+              }`}
             >
               <ContestCalendar
                 month={calendarMonth}
                 contests={filteredContests}
                 expanded={calendarExpanded}
-                onExpandToggle={() => setCalendarExpanded((prev) => !prev)}
-                onMonthChange={setCalendarMonth}
+                focusedDateKey={focusedCalendarDate}
+                onExpandToggle={handleCalendarExpandToggle}
+                onMonthChange={handleCalendarMonthChange}
                 onDetails={setSelectedContest}
+                onShowAllForDay={handleShowAllForDay}
               />
             </aside>
 
-            <main className={calendarExpanded ? "lg:col-span-1" : "lg:col-span-2"}>
+            <main
+              className={`transition-all duration-500 ease-out ${
+                calendarExpanded ? "lg:col-span-1" : "lg:col-span-2"
+              }`}
+            >
               <div className="mb-4 flex items-end justify-between border-b border-white/10 pb-4">
                 <div>
                   <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-purple-400">
