@@ -1184,7 +1184,7 @@ export default function ContestSection() {
       </div>
 
       <div className="relative z-10 mx-auto max-w-7xl">
-        <div className="mb-12 text-center">
+        {/* <div className="mb-12 text-center">
           <p className="mb-3 text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-purple-400">
             All Platforms · Real-time
           </p>
@@ -1197,7 +1197,7 @@ export default function ContestSection() {
             Browse contest cards, inspect dates in calendar view, and add events
             directly to Google Calendar.
           </p>
-        </div>
+        </div> */}
 
         <div className="mb-8 flex justify-center">
           <div className="relative w-full max-w-xl">
@@ -1239,7 +1239,7 @@ export default function ContestSection() {
           })}
         </div>
 
-        <div className="mb-10 flex flex-wrap justify-center gap-3">
+        {/* <div className="mb-10 flex flex-wrap justify-center gap-3">
           {platforms.map((platform) => {
             const isActive = activePlatform === platform;
 
@@ -1286,7 +1286,7 @@ export default function ContestSection() {
               </button>
             );
           })}
-        </div>
+        </div> */}
 
         {loading ? (
           <div className="grid gap-6 lg:grid-cols-3">
@@ -1330,8 +1330,8 @@ export default function ContestSection() {
             >
               <div className="mb-4 flex items-end justify-between border-b border-white/10 pb-4">
                 <div>
-                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-purple-400">
-                    Contest Cards
+                  <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-white/45">
+                    Browse contest cards, inspect dates in calendar view, and add events directly to Google Calendar.
                   </p>
                   <h3 className="mt-1 text-2xl font-bold capitalize text-white">
                     {activeTab}
