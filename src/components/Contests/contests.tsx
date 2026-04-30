@@ -189,7 +189,6 @@ function getMonthLabel(date: Date) {
   });
 }
 
-//normal calender
 function getCalendarDays(monthDate: Date) {
   const year = monthDate.getFullYear();
   const month = monthDate.getMonth();
@@ -204,27 +203,6 @@ function getCalendarDays(monthDate: Date) {
     return day;
   });
 }
-
-//current week on top
-// function getCalendarDays(monthDate: Date) {
-//   const today = new Date();
-
-//   const isCurrentMonth =
-//     monthDate.getMonth() === today.getMonth() &&
-//     monthDate.getFullYear() === today.getFullYear();
-
-//   const calendarStart = isCurrentMonth
-//     ? new Date(today)
-//     : new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
-
-//   calendarStart.setDate(calendarStart.getDate() - calendarStart.getDay());
-
-//   return Array.from({ length: 42 }, (_, index) => {
-//     const day = new Date(calendarStart);
-//     day.setDate(calendarStart.getDate() + index);
-//     return day;
-//   });
-// }
 
 function isSameMonth(a: Date, b: Date) {
   return a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
@@ -376,6 +354,111 @@ ${pageUrl}`;
   }
 }
 
+// ─── Icons ────────────────────────────────────────────────────────────────────
+
+function CalendarPlusIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path
+        d="M8 2v4M16 2v4M3.5 9.5h17M6.5 4.5h11A3 3 0 0 1 20.5 7.5v10A3 3 0 0 1 17.5 20.5h-11A3 3 0 0 1 3.5 17.5v-10A3 3 0 0 1 6.5 4.5Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 13v4M10 15h4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ExternalLinkIcon() {
+  return (
+    <svg
+      width="25"
+      height="25"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path
+        d="M14 5h5v5M19 5l-8 8"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M11 6H7.5A2.5 2.5 0 0 0 5 8.5v8A2.5 2.5 0 0 0 7.5 19h8A2.5 2.5 0 0 0 18 16.5V13"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg
+      width="23"
+      height="23"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <circle
+        cx="18"
+        cy="5"
+        r="2.5"
+        stroke="currentColor"
+        strokeWidth="1.9"
+      />
+      <circle
+        cx="6"
+        cy="12"
+        r="2.5"
+        stroke="currentColor"
+        strokeWidth="1.9"
+      />
+      <circle
+        cx="18"
+        cy="19"
+        r="2.5"
+        stroke="currentColor"
+        strokeWidth="1.9"
+      />
+      <path
+        d="M8.2 10.9L15.7 6.3"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8.2 13.1L15.7 17.7"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 // ─── Contest Card ─────────────────────────────────────────────────────────────
 
@@ -451,32 +534,39 @@ function ContestCard({ contest }: { contest: Contest }) {
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-3 gap-2">
+      <div className="mt-5 flex items-center justify-between gap-3">
         <a
           href={googleCalendarUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center justify-center rounded-2xl border border-purple-500/30 bg-purple-500/10 px-3 py-2.5 text-center text-[0.72rem] font-semibold text-purple-300 no-underline transition-all duration-200 hover:bg-purple-500/15 sm:text-xs"
+          className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-purple-500/30 bg-purple-500/10 px-4 py-2.5 text-center text-[0.72rem] font-semibold text-purple-300 no-underline transition-all duration-200 hover:bg-purple-500/15 sm:text-xs"
         >
-          Add Calendar
+          <CalendarPlusIcon />
+          <span>Add Calendar</span>
         </a>
 
-        <a
-          href={contest.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-center text-[0.72rem] font-semibold text-white/60 no-underline transition-all duration-200 hover:border-white/20 hover:bg-white/[0.07] hover:text-white sm:text-xs"
-        >
-          Visit
-        </a>
+        <div className="ml-auto flex items-center justify-end gap-4">
+          <a
+            href={contest.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Visit contest"
+            title="Visit contest"
+            className="inline-flex items-center justify-center text-white/45 no-underline transition-all duration-200 hover:scale-110 hover:text-purple-300"
+          >
+            <ExternalLinkIcon />
+          </a>
 
-        <button
-          type="button"
-          onClick={() => shareContest(contest)}
-          className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-center text-[0.72rem] font-semibold text-white/60 transition-all duration-200 hover:border-purple-500/30 hover:bg-purple-500/10 hover:text-purple-300 sm:text-xs"
-        >
-          Share
-        </button>
+          <button
+            type="button"
+            onClick={() => shareContest(contest)}
+            aria-label="Share contest"
+            title="Share contest"
+            className="inline-flex items-center justify-center text-white/45 transition-all duration-200 hover:scale-110 hover:text-purple-300"
+          >
+            <ShareIcon />
+          </button>
+        </div>
       </div>
     </article>
   );
@@ -799,9 +889,22 @@ function ContestDetailsModal({
   const styles = STATUS_STYLES[status];
   const googleCalendarUrl = getGoogleCalendarUrl(contest);
 
+  const timingLabel =
+    status === "live"
+      ? timeLeft(contest.end_time)
+      : status === "upcoming"
+        ? timeUntil(contest.start_time)
+        : "Completed";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-xl rounded-[28px] border border-white/10 bg-[#050505] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.6)]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-xl rounded-[28px] border border-white/10 bg-[#050505] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.6)]"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div
           className={`absolute inset-x-0 top-0 h-px rounded-t-[28px] bg-gradient-to-r ${styles.borderTop}`}
         />
@@ -866,26 +969,54 @@ function ContestDetailsModal({
               {formatDuration(contest.duration)}
             </span>
           </div>
+
+          <div className="flex justify-between gap-4">
+            <span className="text-white/35">
+              {status === "live"
+                ? "Ends In"
+                : status === "upcoming"
+                  ? "Timeline"
+                  : "Status"}
+            </span>
+            <span className={`text-right font-semibold ${styles.text}`}>
+              {timingLabel}
+            </span>
+          </div>
         </div>
 
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <a
-            href={contest.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex flex-1 items-center justify-center rounded-2xl border border-purple-500/30 bg-purple-500/10 px-5 py-3 text-sm font-semibold text-purple-300 no-underline transition-all duration-200 hover:bg-purple-500/15"
-          >
-            Visit Contest
-          </a>
-
+        <div className="mt-6 flex items-center justify-between gap-3">
           <a
             href={googleCalendarUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex flex-1 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white/65 no-underline transition-all duration-200 hover:border-white/20 hover:bg-white/[0.07] hover:text-white"
+            className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-purple-500/30 bg-purple-500/10 px-4 py-2.5 text-center text-[0.72rem] font-semibold text-purple-300 no-underline transition-all duration-200 hover:bg-purple-500/15 sm:text-xs"
           >
-            Add to Google Calendar
+            <CalendarPlusIcon />
+            <span>Add Calendar</span>
           </a>
+
+          <div className="ml-auto flex items-center justify-end gap-4">
+            <a
+              href={contest.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Visit contest"
+              title="Visit contest"
+              className="inline-flex items-center justify-center text-white/45 no-underline transition-all duration-200 hover:scale-110 hover:text-purple-300"
+            >
+              <ExternalLinkIcon />
+            </a>
+
+            <button
+              type="button"
+              onClick={() => shareContest(contest)}
+              aria-label="Share contest"
+              title="Share contest"
+              className="inline-flex items-center justify-center text-white/45 transition-all duration-200 hover:scale-110 hover:text-purple-300"
+            >
+              <ShareIcon />
+            </button>
+          </div>
         </div>
       </div>
     </div>
