@@ -7,7 +7,6 @@ import {
   useState,
   type MouseEvent,
   type RefObject,
-  type WheelEvent,
 } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -243,15 +242,14 @@ function getGoogleCalendarUrl(contest: Contest) {
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${dates}&details=${details}&location=${location}`;
 }
 
-// ─── Linked Scroll Handoff ────────────────────────────────────────────────────
+// ─── Strict Linked Scroll Handoff ─────────────────────────────────────────────
 // Rule:
-// 1. Current column scrolls first.
-// 2. If current column hits top/bottom, the other column scrolls.
-// 3. Full page scroll is allowed only when BOTH columns were already exhausted
-//    at the start of the wheel event.
+// 1. Column under cursor scrolls first.
+// 2. After it reaches top/bottom, the other column scrolls.
+// 3. Page scroll is allowed ONLY when both columns are already at top/bottom.
 
-function getNormalizedWheelDelta(
-  event: WheelEvent<HTMLDivElement>,
+function getNormalizedNativeWheelDelta(
+  event: globalThis.WheelEvent,
   fallbackHeight: number,
 ) {
   if (event.deltaMode === 1) return event.deltaY * 16;
@@ -302,61 +300,75 @@ function scrollElementAndReturnRemaining(
   return deltaY - consumedDelta;
 }
 
-function handleLinkedScrollHandoff(
-  event: WheelEvent<HTMLDivElement>,
-  pairedScrollRef: RefObject<HTMLDivElement | null>,
+function createStrictLinkedWheelHandler(
+  currentRef: RefObject<HTMLDivElement | null>,
+  pairedRef: RefObject<HTMLDivElement | null>,
 ) {
-  const currentElement = event.currentTarget;
-  const pairedElement = pairedScrollRef.current;
+  return (event: globalThis.WheelEvent) => {
+    const currentElement = currentRef.current;
+    const pairedElement = pairedRef.current;
 
-  const deltaY = getNormalizedWheelDelta(event, currentElement.clientHeight);
+    if (!currentElement) return;
 
-  if (Math.abs(deltaY) < 1) return;
-
-  const canCurrentScrollAtStart = canScrollElement(currentElement, deltaY);
-  const canPairedScrollAtStart = pairedElement
-    ? canScrollElement(pairedElement, deltaY)
-    : false;
-
-  /**
-   * Important:
-   * If both columns are already exhausted in this direction,
-   * do NOT prevent default. Browser will scroll the full page naturally.
-   */
-  if (!canCurrentScrollAtStart && !canPairedScrollAtStart) {
-    return;
-  }
-
-  /**
-   * If even one column can still scroll, lock the page.
-   * This guarantees the page does not move until both columns
-   * reach top/bottom.
-   */
-  event.preventDefault();
-  event.stopPropagation();
-
-  let remainingDelta = deltaY;
-
-  if (canCurrentScrollAtStart) {
-    remainingDelta = scrollElementAndReturnRemaining(
-      currentElement,
-      remainingDelta,
+    const deltaY = getNormalizedNativeWheelDelta(
+      event,
+      currentElement.clientHeight,
     );
-  }
 
-  if (
-    Math.abs(remainingDelta) > 1 &&
-    pairedElement &&
-    canScrollElement(pairedElement, remainingDelta)
-  ) {
-    scrollElementAndReturnRemaining(pairedElement, remainingDelta);
-  }
+    if (Math.abs(deltaY) < 1) return;
 
-  /**
-   * Do not call window.scrollBy here.
-   * The page scroll must happen only on the next wheel event
-   * when both columns are already at their boundary.
-   */
+    const canCurrentScrollAtStart = canScrollElement(currentElement, deltaY);
+    const canPairedScrollAtStart = pairedElement
+      ? canScrollElement(pairedElement, deltaY)
+      : false;
+
+    /**
+     * Critical rule:
+     * If both columns are already exhausted in this direction,
+     * let the browser scroll the full page naturally.
+     */
+    if (!canCurrentScrollAtStart && !canPairedScrollAtStart) {
+      return;
+    }
+
+    /**
+     * If even one inner column can still scroll,
+     * block page scroll completely.
+     */
+    event.preventDefault();
+    event.stopPropagation();
+
+    let remainingDelta = deltaY;
+
+    /**
+     * Priority 1:
+     * Scroll column under cursor first.
+     */
+    if (canCurrentScrollAtStart) {
+      remainingDelta = scrollElementAndReturnRemaining(
+        currentElement,
+        remainingDelta,
+      );
+    }
+
+    /**
+     * Priority 2:
+     * Scroll the other column only after current column hits boundary.
+     */
+    if (
+      Math.abs(remainingDelta) > 1 &&
+      pairedElement &&
+      canScrollElement(pairedElement, remainingDelta)
+    ) {
+      scrollElementAndReturnRemaining(pairedElement, remainingDelta);
+    }
+
+    /**
+     * No window.scrollBy here.
+     * Page scroll unlocks only on the next wheel event when both columns
+     * are already at top/bottom.
+     */
+  };
 }
 
 // ─── Status Styles ────────────────────────────────────────────────────────────
@@ -1473,22 +1485,6 @@ export default function ContestSection() {
     })();
   }, []);
 
-  const platforms = useMemo(() => {
-    return ["all", ...Array.from(new Set(contests.map((c) => c.platform)))];
-  }, [contests]);
-
-  const counts = useMemo<Record<Tab, number>>(() => {
-    return {
-      live: contests.filter((c) => getStatus(c.start_time, c.end_time) === "live")
-        .length,
-      upcoming: contests.filter(
-        (c) => getStatus(c.start_time, c.end_time) === "upcoming",
-      ).length,
-      ended: contests.filter((c) => getStatus(c.start_time, c.end_time) === "ended")
-        .length,
-    };
-  }, [contests]);
-
   const filteredContests = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
@@ -1512,6 +1508,53 @@ export default function ContestSection() {
         return b.end_time - a.end_time;
       });
   }, [activePlatform, activeTab, contests, search]);
+
+  useEffect(() => {
+    if (loading || error) return;
+
+    const calendarElement = calendarScrollRef.current;
+    const cardsElement = cardsScrollRef.current;
+
+    if (!calendarElement || !cardsElement) return;
+
+    const handleCalendarWheel = createStrictLinkedWheelHandler(
+      calendarScrollRef,
+      cardsScrollRef,
+    );
+
+    const handleCardsWheel = createStrictLinkedWheelHandler(
+      cardsScrollRef,
+      calendarScrollRef,
+    );
+
+    const wheelOptions: AddEventListenerOptions = {
+      passive: false,
+    };
+
+    calendarElement.addEventListener("wheel", handleCalendarWheel, wheelOptions);
+    cardsElement.addEventListener("wheel", handleCardsWheel, wheelOptions);
+
+    return () => {
+      calendarElement.removeEventListener("wheel", handleCalendarWheel);
+      cardsElement.removeEventListener("wheel", handleCardsWheel);
+    };
+  }, [loading, error, calendarExpanded, filteredContests.length]);
+
+  const platforms = useMemo(() => {
+    return ["all", ...Array.from(new Set(contests.map((c) => c.platform)))];
+  }, [contests]);
+
+  const counts = useMemo<Record<Tab, number>>(() => {
+    return {
+      live: contests.filter((c) => getStatus(c.start_time, c.end_time) === "live")
+        .length,
+      upcoming: contests.filter(
+        (c) => getStatus(c.start_time, c.end_time) === "upcoming",
+      ).length,
+      ended: contests.filter((c) => getStatus(c.start_time, c.end_time) === "ended")
+        .length,
+    };
+  }, [contests]);
 
   const handleCalendarExpandToggle = () => {
     if (calendarExpanded) {
@@ -1597,7 +1640,7 @@ export default function ContestSection() {
             {error}
           </div>
         ) : (
-          <div className="grid gap-6 transition-all duration-500 ease-out lg:h-[calc(100vh-260px)] lg:min-h-[560px] lg:grid-cols-3 lg:overflow-visible">
+          <div className="grid gap-6 transition-all duration-500 ease-out pb-24 lg:h-[calc(100vh-260px)] lg:min-h-[560px] lg:grid-cols-3 lg:overflow-visible">
             <aside
               className={`min-h-0 transition-all duration-500 ease-out ${
                 calendarExpanded ? "lg:col-span-2" : "lg:col-span-1"
@@ -1605,9 +1648,6 @@ export default function ContestSection() {
             >
               <div
                 ref={calendarScrollRef}
-                onWheel={(event) =>
-                  handleLinkedScrollHandoff(event, cardsScrollRef)
-                }
                 className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto pr-1"
               >
                 <ContestCalendar
@@ -1630,9 +1670,6 @@ export default function ContestSection() {
             >
               <div
                 ref={cardsScrollRef}
-                onWheel={(event) =>
-                  handleLinkedScrollHandoff(event, calendarScrollRef)
-                }
                 className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto pr-1"
               >
                 <div className="mb-4 flex items-end justify-between border-b border-white/10 pb-4">
@@ -1681,7 +1718,7 @@ export default function ContestSection() {
         )}
 
         {!loading && !error && (
-          <p className="mt-10 text-center text-xs text-white/25">
+          <p className="mt-0 text-center text-xs text-white/25">
             Showing {filteredContests.length} contest
             {filteredContests.length !== 1 ? "s" : ""} · Expand calendar for a
             larger monthly planning view
