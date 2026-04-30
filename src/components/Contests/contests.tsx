@@ -3,8 +3,10 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent,
+  type RefObject,
   type WheelEvent,
 } from "react";
 
@@ -241,25 +243,120 @@ function getGoogleCalendarUrl(contest: Contest) {
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${dates}&details=${details}&location=${location}`;
 }
 
-function handleScrollHandoff(event: WheelEvent<HTMLDivElement>) {
-  const element = event.currentTarget;
+// ─── Linked Scroll Handoff ────────────────────────────────────────────────────
+// Rule:
+// 1. Current column scrolls first.
+// 2. If current column hits top/bottom, the other column scrolls.
+// 3. Full page scroll is allowed only when BOTH columns were already exhausted
+//    at the start of the wheel event.
 
-  const isScrollingDown = event.deltaY > 0;
-  const isScrollingUp = event.deltaY < 0;
+function getNormalizedWheelDelta(
+  event: WheelEvent<HTMLDivElement>,
+  fallbackHeight: number,
+) {
+  if (event.deltaMode === 1) return event.deltaY * 16;
+  if (event.deltaMode === 2) return event.deltaY * fallbackHeight;
 
-  const scrollTop = element.scrollTop;
-  const clientHeight = element.clientHeight;
-  const scrollHeight = element.scrollHeight;
+  return event.deltaY;
+}
 
-  const atTop = scrollTop <= 0;
-  const atBottom = Math.ceil(scrollTop + clientHeight) >= scrollHeight;
+function getMaxScrollTop(element: HTMLDivElement) {
+  return Math.max(0, element.scrollHeight - element.clientHeight);
+}
 
-  const canScrollInside =
-    (isScrollingDown && !atBottom) || (isScrollingUp && !atTop);
+function canScrollElement(element: HTMLDivElement, deltaY: number) {
+  const maxScrollTop = getMaxScrollTop(element);
 
-  if (canScrollInside) {
-    event.stopPropagation();
+  if (maxScrollTop <= 0) return false;
+
+  if (deltaY > 0) {
+    return element.scrollTop < maxScrollTop - 1;
   }
+
+  if (deltaY < 0) {
+    return element.scrollTop > 1;
+  }
+
+  return false;
+}
+
+function scrollElementAndReturnRemaining(
+  element: HTMLDivElement,
+  deltaY: number,
+) {
+  const maxScrollTop = getMaxScrollTop(element);
+
+  if (maxScrollTop <= 0) return deltaY;
+
+  const previousScrollTop = element.scrollTop;
+
+  const nextScrollTop = Math.min(
+    maxScrollTop,
+    Math.max(0, previousScrollTop + deltaY),
+  );
+
+  element.scrollTop = nextScrollTop;
+
+  const consumedDelta = nextScrollTop - previousScrollTop;
+
+  return deltaY - consumedDelta;
+}
+
+function handleLinkedScrollHandoff(
+  event: WheelEvent<HTMLDivElement>,
+  pairedScrollRef: RefObject<HTMLDivElement | null>,
+) {
+  const currentElement = event.currentTarget;
+  const pairedElement = pairedScrollRef.current;
+
+  const deltaY = getNormalizedWheelDelta(event, currentElement.clientHeight);
+
+  if (Math.abs(deltaY) < 1) return;
+
+  const canCurrentScrollAtStart = canScrollElement(currentElement, deltaY);
+  const canPairedScrollAtStart = pairedElement
+    ? canScrollElement(pairedElement, deltaY)
+    : false;
+
+  /**
+   * Important:
+   * If both columns are already exhausted in this direction,
+   * do NOT prevent default. Browser will scroll the full page naturally.
+   */
+  if (!canCurrentScrollAtStart && !canPairedScrollAtStart) {
+    return;
+  }
+
+  /**
+   * If even one column can still scroll, lock the page.
+   * This guarantees the page does not move until both columns
+   * reach top/bottom.
+   */
+  event.preventDefault();
+  event.stopPropagation();
+
+  let remainingDelta = deltaY;
+
+  if (canCurrentScrollAtStart) {
+    remainingDelta = scrollElementAndReturnRemaining(
+      currentElement,
+      remainingDelta,
+    );
+  }
+
+  if (
+    Math.abs(remainingDelta) > 1 &&
+    pairedElement &&
+    canScrollElement(pairedElement, remainingDelta)
+  ) {
+    scrollElementAndReturnRemaining(pairedElement, remainingDelta);
+  }
+
+  /**
+   * Do not call window.scrollBy here.
+   * The page scroll must happen only on the next wheel event
+   * when both columns are already at their boundary.
+   */
 }
 
 // ─── Status Styles ────────────────────────────────────────────────────────────
@@ -1086,6 +1183,7 @@ function CalendarSkeleton() {
   );
 }
 
+// ─── Dropdown Icons ───────────────────────────────────────────────────────────
 
 function ChevronDownIcon() {
   return (
@@ -1132,6 +1230,8 @@ function SmallPlatformLogo({
     />
   );
 }
+
+// ─── Status Dropdown ──────────────────────────────────────────────────────────
 
 function StatusDropdown({
   value,
@@ -1227,6 +1327,8 @@ function StatusDropdown({
     </div>
   );
 }
+
+// ─── Platform Dropdown ────────────────────────────────────────────────────────
 
 function PlatformDropdown({
   value,
@@ -1327,10 +1429,7 @@ function PlatformDropdown({
   );
 }
 
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
-
-const TABS: Tab[] = ["upcoming", "live", "ended"];
 
 export default function ContestSection() {
   const [contests, setContests] = useState<Contest[]>([]);
@@ -1345,6 +1444,9 @@ export default function ContestSection() {
   const [focusedCalendarDate, setFocusedCalendarDate] = useState<string | null>(
     null,
   );
+
+  const calendarScrollRef = useRef<HTMLDivElement | null>(null);
+  const cardsScrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -1430,18 +1532,6 @@ export default function ContestSection() {
     setCalendarMonth(new Date(day.getFullYear(), day.getMonth(), 1));
   };
 
-  const tabActive: Record<Tab, string> = {
-    live: "border-red-500/40 bg-red-500/10 text-red-400",
-    upcoming: "border-purple-500/40 bg-purple-500/10 text-purple-400",
-    ended: "border-white/20 bg-white/[0.04] text-white/55",
-  };
-
-  const countActive: Record<Tab, string> = {
-    live: "bg-red-500 text-white",
-    upcoming: "bg-purple-500 text-white",
-    ended: "bg-white/20 text-white",
-  };
-
   return (
     <section
       id="contests"
@@ -1469,28 +1559,28 @@ export default function ContestSection() {
 
       <div className="relative z-10 mx-auto max-w-7xl">
         <div className="mb-8 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_240px] md:items-center">
-  <div className="relative w-full">
-    <input
-      type="text"
-      placeholder="Search contests or platforms..."
-      value={search}
-      onChange={(e) => setSearch(e.target.value)}
-      className="h-[46px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm text-white outline-none transition-all duration-200 placeholder:text-white/30 focus:border-purple-500/50 focus:bg-white/[0.06] focus:shadow-[0_0_0_4px_rgba(140,69,255,0.08)]"
-    />
-  </div>
+          <div className="relative w-full">
+            <input
+              type="text"
+              placeholder="Search contests or platforms..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-[46px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm text-white outline-none transition-all duration-200 placeholder:text-white/30 focus:border-purple-500/50 focus:bg-white/[0.06] focus:shadow-[0_0_0_4px_rgba(140,69,255,0.08)]"
+            />
+          </div>
 
-  <StatusDropdown
-    value={activeTab}
-    counts={counts}
-    onChange={(nextTab) => setActiveTab(nextTab)}
-  />
+          <StatusDropdown
+            value={activeTab}
+            counts={counts}
+            onChange={(nextTab) => setActiveTab(nextTab)}
+          />
 
-  <PlatformDropdown
-    value={activePlatform}
-    platforms={platforms}
-    onChange={(nextPlatform) => setActivePlatform(nextPlatform)}
-  />
-</div>
+          <PlatformDropdown
+            value={activePlatform}
+            platforms={platforms}
+            onChange={(nextPlatform) => setActivePlatform(nextPlatform)}
+          />
+        </div>
 
         {loading ? (
           <div className="grid gap-6 lg:grid-cols-3">
@@ -1514,7 +1604,10 @@ export default function ContestSection() {
               }`}
             >
               <div
-                onWheel={handleScrollHandoff}
+                ref={calendarScrollRef}
+                onWheel={(event) =>
+                  handleLinkedScrollHandoff(event, cardsScrollRef)
+                }
                 className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto pr-1"
               >
                 <ContestCalendar
@@ -1536,7 +1629,10 @@ export default function ContestSection() {
               }`}
             >
               <div
-                onWheel={handleScrollHandoff}
+                ref={cardsScrollRef}
+                onWheel={(event) =>
+                  handleLinkedScrollHandoff(event, calendarScrollRef)
+                }
                 className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto pr-1"
               >
                 <div className="mb-4 flex items-end justify-between border-b border-white/10 pb-4">
