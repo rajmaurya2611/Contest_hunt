@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent,
+  type WheelEvent,
+} from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -233,6 +239,27 @@ function getGoogleCalendarUrl(contest: Contest) {
   const location = encodeURIComponent(getPlatform(contest.platform).label);
 
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${dates}&details=${details}&location=${location}`;
+}
+
+function handleScrollHandoff(event: WheelEvent<HTMLDivElement>) {
+  const element = event.currentTarget;
+
+  const isScrollingDown = event.deltaY > 0;
+  const isScrollingUp = event.deltaY < 0;
+
+  const scrollTop = element.scrollTop;
+  const clientHeight = element.clientHeight;
+  const scrollHeight = element.scrollHeight;
+
+  const atTop = scrollTop <= 0;
+  const atBottom = Math.ceil(scrollTop + clientHeight) >= scrollHeight;
+
+  const canScrollInside =
+    (isScrollingDown && !atBottom) || (isScrollingUp && !atTop);
+
+  if (canScrollInside) {
+    event.stopPropagation();
+  }
 }
 
 // ─── Status Styles ────────────────────────────────────────────────────────────
@@ -1178,27 +1205,27 @@ export default function ContestSection() {
       id="contests"
       className="relative min-h-screen overflow-hidden bg-[#020202] px-5 py-20 font-rubik md:px-8 lg:px-10"
     >
+      <style>
+        {`
+          .contest-hidden-scrollbar {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+
+          .contest-hidden-scrollbar::-webkit-scrollbar {
+            width: 0px;
+            height: 0px;
+            display: none;
+          }
+        `}
+      </style>
+
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-1/2 top-0 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-purple-700/20 blur-[120px]" />
         <div className="absolute bottom-20 right-0 h-[320px] w-[320px] rounded-full bg-[#8C45FF]/10 blur-[120px]" />
       </div>
 
       <div className="relative z-10 mx-auto max-w-7xl">
-        {/* <div className="mb-12 text-center">
-          <p className="mb-3 text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-purple-400">
-            All Platforms · Real-time
-          </p>
-
-          <h2 className="text-4xl font-bold leading-tight tracking-tight text-white md:text-5xl">
-            Contest <span className="text-[#8C45FF]">Calendar</span>
-          </h2>
-
-          <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-white/45">
-            Browse contest cards, inspect dates in calendar view, and add events
-            directly to Google Calendar.
-          </p>
-        </div> */}
-
         <div className="mb-8 flex justify-center">
           <div className="relative w-full max-w-xl">
             <input
@@ -1239,55 +1266,6 @@ export default function ContestSection() {
           })}
         </div>
 
-        {/* <div className="mb-10 flex flex-wrap justify-center gap-3">
-          {platforms.map((platform) => {
-            const isActive = activePlatform === platform;
-
-            const meta =
-              platform === "all"
-                ? {
-                    label: "All Platforms",
-                    text: "text-purple-400",
-                    dot: "bg-purple-400",
-                    logo: "",
-                    pill: "border-purple-500/30 bg-purple-500/10 text-purple-400",
-                  }
-                : getPlatform(platform);
-
-            return (
-              <button
-                key={platform}
-                onClick={() => setActivePlatform(platform)}
-                className={`group flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 transition-all duration-300 ${
-                  isActive
-                    ? `${meta.pill} shadow-[0_8px_24px_rgba(140,69,255,0.14)]`
-                    : "border-white/10 bg-white/[0.03] text-white/45 hover:border-purple-500/30 hover:bg-white/[0.05] hover:text-white/70"
-                }`}
-              >
-                <div
-                  className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border p-1.5 transition-transform duration-300 group-hover:scale-110 ${
-                    isActive
-                      ? "border-purple-500/40 bg-white/10"
-                      : "border-white/10 bg-white/[0.04]"
-                  }`}
-                >
-                  {platform === "all" ? (
-                    <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
-                  ) : (
-                    <img
-                      src={meta.logo}
-                      alt={meta.label}
-                      className="h-full w-full object-contain"
-                    />
-                  )}
-                </div>
-
-                <span className="text-xs font-semibold">{meta.label}</span>
-              </button>
-            );
-          })}
-        </div> */}
-
         {loading ? (
           <div className="grid gap-6 lg:grid-cols-3">
             <CalendarSkeleton />
@@ -1303,68 +1281,79 @@ export default function ContestSection() {
             {error}
           </div>
         ) : (
-          <div className="grid gap-6 transition-all duration-500 ease-out lg:grid-cols-3">
+          <div className="grid gap-6 transition-all duration-500 ease-out lg:h-[calc(100vh-260px)] lg:min-h-[560px] lg:grid-cols-3 lg:overflow-visible">
             <aside
-              className={`transition-all duration-500 ease-out ${
-                calendarExpanded
-                  ? "lg:col-span-2"
-                  : "lg:sticky lg:top-24 lg:col-span-1 lg:self-start"
+              className={`min-h-0 transition-all duration-500 ease-out ${
+                calendarExpanded ? "lg:col-span-2" : "lg:col-span-1"
               }`}
             >
-              <ContestCalendar
-                month={calendarMonth}
-                contests={filteredContests}
-                expanded={calendarExpanded}
-                focusedDateKey={focusedCalendarDate}
-                onExpandToggle={handleCalendarExpandToggle}
-                onMonthChange={handleCalendarMonthChange}
-                onDetails={setSelectedContest}
-                onShowAllForDay={handleShowAllForDay}
-              />
+              <div
+                onWheel={handleScrollHandoff}
+                className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto pr-1"
+              >
+                <ContestCalendar
+                  month={calendarMonth}
+                  contests={filteredContests}
+                  expanded={calendarExpanded}
+                  focusedDateKey={focusedCalendarDate}
+                  onExpandToggle={handleCalendarExpandToggle}
+                  onMonthChange={handleCalendarMonthChange}
+                  onDetails={setSelectedContest}
+                  onShowAllForDay={handleShowAllForDay}
+                />
+              </div>
             </aside>
 
             <main
-              className={`transition-all duration-500 ease-out ${
+              className={`min-h-0 transition-all duration-500 ease-out ${
                 calendarExpanded ? "lg:col-span-1" : "lg:col-span-2"
               }`}
             >
-              <div className="mb-4 flex items-end justify-between border-b border-white/10 pb-4">
-                <div>
-                  <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-white/45">
-                    Browse contest cards, inspect dates in calendar view, and add events directly to Google Calendar.
-                  </p>
-                  <h3 className="mt-1 text-2xl font-bold capitalize text-white">
-                    {activeTab}
-                  </h3>
+              <div
+                onWheel={handleScrollHandoff}
+                className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto pr-1"
+              >
+                <div className="mb-4 flex items-end justify-between border-b border-white/10 pb-4">
+                  <div>
+                    <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-white/45">
+                      Browse contest cards, inspect dates in calendar view, and
+                      add events directly to Google Calendar.
+                    </p>
+
+                    <h3 className="mt-1 text-2xl font-bold capitalize text-white">
+                      {activeTab}
+                    </h3>
+                  </div>
+
+                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-white/40">
+                    {filteredContests.length}
+                  </span>
                 </div>
 
-                <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-white/40">
-                  {filteredContests.length}
-                </span>
+                {filteredContests.length === 0 ? (
+                  <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 px-6 py-20 text-center">
+                    <p className="text-lg font-semibold text-white">
+                      No contests found
+                    </p>
+
+                    <p className="mt-2 text-sm text-white/40">
+                      Try changing the status tab, platform filter, or search keyword.
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    className={
+                      calendarExpanded
+                        ? "grid gap-5 pb-1"
+                        : "grid gap-5 pb-1 sm:grid-cols-2"
+                    }
+                  >
+                    {filteredContests.map((contest) => (
+                      <ContestCard key={contest.id} contest={contest} />
+                    ))}
+                  </div>
+                )}
               </div>
-
-              {filteredContests.length === 0 ? (
-                <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 px-6 py-20 text-center">
-                  <p className="text-lg font-semibold text-white">
-                    No contests found
-                  </p>
-                  <p className="mt-2 text-sm text-white/40">
-                    Try changing the status tab, platform filter, or search keyword.
-                  </p>
-                </div>
-              ) : (
-                <div
-                  className={
-                    calendarExpanded
-                      ? "grid gap-5"
-                      : "grid gap-5 sm:grid-cols-2"
-                  }
-                >
-                  {filteredContests.map((contest) => (
-                    <ContestCard key={contest.id} contest={contest} />
-                  ))}
-                </div>
-              )}
             </main>
           </div>
         )}
