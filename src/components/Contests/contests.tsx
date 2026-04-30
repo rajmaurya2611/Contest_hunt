@@ -1086,6 +1086,248 @@ function CalendarSkeleton() {
   );
 }
 
+
+function ChevronDownIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path
+        d="M6 9l6 6 6-6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function SmallPlatformLogo({
+  src,
+  alt,
+  dotClass,
+}: {
+  src: string;
+  alt: string;
+  dotClass: string;
+}) {
+  const [imgError, setImgError] = useState(false);
+
+  if (imgError) {
+    return <span className={`h-2.5 w-2.5 rounded-full ${dotClass}`} />;
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className="h-5 w-5 shrink-0 object-contain"
+      onError={() => setImgError(true)}
+    />
+  );
+}
+
+function StatusDropdown({
+  value,
+  counts,
+  onChange,
+}: {
+  value: Tab;
+  counts: Record<Tab, number>;
+  onChange: (value: Tab) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const options: Tab[] = ["upcoming", "live"];
+
+  const statusMeta: Record<
+    Tab,
+    {
+      label: string;
+      dot: string;
+      active: string;
+    }
+  > = {
+    upcoming: {
+      label: "Upcoming",
+      dot: "bg-purple-500",
+      active: "text-purple-300",
+    },
+    live: {
+      label: "Live",
+      dot: "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]",
+      active: "text-red-300",
+    },
+    ended: {
+      label: "Ended",
+      dot: "bg-white/30",
+      active: "text-white/40",
+    },
+  };
+
+  const selected = statusMeta[value];
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex h-[46px] w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm font-semibold text-white/70 transition-all duration-200 hover:border-purple-500/30 hover:bg-white/[0.06]"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${selected.dot}`} />
+          <span className={`truncate ${selected.active}`}>{selected.label}</span>
+          <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/40">
+            {counts[value]}
+          </span>
+        </span>
+
+        <ChevronDownIcon />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-40 overflow-hidden rounded-2xl border border-white/10 bg-[#080808] p-1 shadow-[0_18px_60px_rgba(0,0,0,0.55)]">
+          {options.map((option) => {
+            const meta = statusMeta[option];
+            const isActive = value === option;
+
+            return (
+              <button
+                key={option}
+                type="button"
+                onClick={() => {
+                  onChange(option);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${
+                  isActive
+                    ? "bg-purple-500/10 text-white"
+                    : "text-white/50 hover:bg-white/[0.05] hover:text-white/80"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
+                  <span>{meta.label}</span>
+                </span>
+
+                <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/40">
+                  {counts[option]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlatformDropdown({
+  value,
+  platforms,
+  onChange,
+}: {
+  value: string;
+  platforms: string[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const selectedMeta =
+    value === "all"
+      ? {
+          label: "All Platforms",
+          text: "text-purple-300",
+          dot: "bg-purple-400",
+          logo: "",
+        }
+      : getPlatform(value);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex h-[46px] w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm font-semibold text-white/70 transition-all duration-200 hover:border-purple-500/30 hover:bg-white/[0.06]"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          {value === "all" ? (
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-purple-400" />
+          ) : (
+            <SmallPlatformLogo
+              src={selectedMeta.logo}
+              alt={selectedMeta.label}
+              dotClass={selectedMeta.dot}
+            />
+          )}
+
+          <span className={`truncate ${selectedMeta.text}`}>
+            {selectedMeta.label}
+          </span>
+        </span>
+
+        <ChevronDownIcon />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-40 max-h-[280px] overflow-y-auto rounded-2xl border border-white/10 bg-[#080808] p-1 shadow-[0_18px_60px_rgba(0,0,0,0.55)]">
+          {platforms.map((platform) => {
+            const isAll = platform === "all";
+
+            const meta = isAll
+              ? {
+                  label: "All Platforms",
+                  text: "text-purple-300",
+                  dot: "bg-purple-400",
+                  logo: "",
+                }
+              : getPlatform(platform);
+
+            const isActive = value === platform;
+
+            return (
+              <button
+                key={platform}
+                type="button"
+                onClick={() => {
+                  onChange(platform);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${
+                  isActive
+                    ? "bg-purple-500/10 text-white"
+                    : "text-white/50 hover:bg-white/[0.05] hover:text-white/80"
+                }`}
+              >
+                {isAll ? (
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-purple-400" />
+                ) : (
+                  <SmallPlatformLogo
+                    src={meta.logo}
+                    alt={meta.label}
+                    dotClass={meta.dot}
+                  />
+                )}
+
+                <span className={`truncate ${isActive ? meta.text : ""}`}>
+                  {meta.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const TABS: Tab[] = ["upcoming", "live", "ended"];
@@ -1226,45 +1468,29 @@ export default function ContestSection() {
       </div>
 
       <div className="relative z-10 mx-auto max-w-7xl">
-        <div className="mb-8 flex justify-center">
-          <div className="relative w-full max-w-xl">
-            <input
-              type="text"
-              placeholder="Search contests or platforms..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm text-white outline-none transition-all duration-200 placeholder:text-white/30 focus:border-purple-500/50 focus:bg-white/[0.06] focus:shadow-[0_0_0_4px_rgba(140,69,255,0.08)]"
-            />
-          </div>
-        </div>
+        <div className="mb-8 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_240px] md:items-center">
+  <div className="relative w-full">
+    <input
+      type="text"
+      placeholder="Search contests or platforms..."
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+      className="h-[46px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm text-white outline-none transition-all duration-200 placeholder:text-white/30 focus:border-purple-500/50 focus:bg-white/[0.06] focus:shadow-[0_0_0_4px_rgba(140,69,255,0.08)]"
+    />
+  </div>
 
-        <div className="mb-6 flex flex-wrap justify-center gap-2">
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab;
+  <StatusDropdown
+    value={activeTab}
+    counts={counts}
+    onChange={(nextTab) => setActiveTab(nextTab)}
+  />
 
-            return (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`flex cursor-pointer items-center gap-2 rounded-2xl border px-5 py-2.5 text-sm font-semibold capitalize transition-all duration-200 ${
-                  isActive
-                    ? tabActive[tab]
-                    : "border-white/10 bg-white/[0.03] text-white/40 hover:border-purple-500/30 hover:bg-white/[0.05] hover:text-white/70"
-                }`}
-              >
-                {tab}
-
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-bold transition-all ${
-                    isActive ? countActive[tab] : "bg-white/10 text-white/40"
-                  }`}
-                >
-                  {counts[tab]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+  <PlatformDropdown
+    value={activePlatform}
+    platforms={platforms}
+    onChange={(nextPlatform) => setActivePlatform(nextPlatform)}
+  />
+</div>
 
         {loading ? (
           <div className="grid gap-6 lg:grid-cols-3">
