@@ -148,7 +148,7 @@ function timeLeft(unix: number) {
   return `${Math.max(m, 0)}m left`;
 }
 
-const APP_DOWNLOAD_URL = "https://your-app-download-link.com";
+const APP_DOWNLOAD_URL = "https://play.google.com/store/apps/details?id=com.miraidyo.contesthunt&pcampaignid=web_share";
 const BRAND_PAGE_NAME = "Contest Calendar";
 
 function toGoogleCalendarDate(unix: number) {
