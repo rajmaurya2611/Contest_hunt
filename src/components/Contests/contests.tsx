@@ -1601,30 +1601,33 @@ export default function ContestSection() {
       </div>
 
       <div className="relative z-10 mx-auto max-w-7xl">
-        <div className="mb-8 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_240px] md:items-center">
-          <div className="relative w-full">
-            <input
-              type="text"
-              placeholder="Search contests or platforms..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-[46px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm text-white outline-none transition-all duration-200 placeholder:text-white/30 focus:border-purple-500/50 focus:bg-white/[0.06] focus:shadow-[0_0_0_4px_rgba(140,69,255,0.08)]"
-            />
-          </div>
+        <div className="mb-8 grid gap-3 md:grid-cols-12 md:items-center">
+  <div className="relative w-full md:col-span-8">
+    <input
+      type="text"
+      placeholder="Search contests or platforms..."
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+      className="h-[46px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm text-white outline-none transition-all duration-200 placeholder:text-white/30 focus:border-purple-500/50 focus:bg-white/[0.06] focus:shadow-[0_0_0_4px_rgba(140,69,255,0.08)]"
+    />
+  </div>
 
-          <StatusDropdown
-            value={activeTab}
-            counts={counts}
-            onChange={(nextTab) => setActiveTab(nextTab)}
-          />
+  <div className="md:col-span-2">
+    <StatusDropdown
+      value={activeTab}
+      counts={counts}
+      onChange={(nextTab) => setActiveTab(nextTab)}
+    />
+  </div>
 
-          <PlatformDropdown
-            value={activePlatform}
-            platforms={platforms}
-            onChange={(nextPlatform) => setActivePlatform(nextPlatform)}
-          />
-          
-        </div>
+  <div className="md:col-span-2">
+    <PlatformDropdown
+      value={activePlatform}
+      platforms={platforms}
+      onChange={(nextPlatform) => setActivePlatform(nextPlatform)}
+    />
+  </div>
+</div>
         {loading ? (
           <div className="grid gap-6 lg:grid-cols-3">
             <CalendarSkeleton />
