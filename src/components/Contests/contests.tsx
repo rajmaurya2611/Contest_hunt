@@ -1623,8 +1623,8 @@ export default function ContestSection() {
             platforms={platforms}
             onChange={(nextPlatform) => setActivePlatform(nextPlatform)}
           />
+          
         </div>
-
         {loading ? (
           <div className="grid gap-6 lg:grid-cols-3">
             <CalendarSkeleton />
@@ -1674,10 +1674,10 @@ export default function ContestSection() {
               >
                 <div className="mb-4 flex items-end justify-between border-b border-white/10 pb-4">
                   <div>
-                    <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-white/45">
+                    {/* <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-white/45">
                       Browse contest cards, inspect dates in calendar view, and
                       add events directly to Google Calendar.
-                    </p>
+                    </p> */}
 
                     <h3 className="mt-1 text-2xl font-bold capitalize text-white">
                       {activeTab}
