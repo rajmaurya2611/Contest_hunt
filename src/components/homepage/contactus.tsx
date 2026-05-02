@@ -28,7 +28,7 @@ export default function ContactUs() {
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-purple-500/50 to-transparent" />
       </div>
 
-      <div className="">
+      <div className="mx-auto max-w-7xl">
         {/* Top Center Heading */}
         <div className="mx-auto mb-12 max-w-3xl text-center">
           <h2 className="text-4xl font-bold leading-tight tracking-tight text-white md:text-5xl">
