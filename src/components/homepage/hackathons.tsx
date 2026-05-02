@@ -140,6 +140,191 @@ function clampText(text: string, max = 110) {
   return text.length > max ? `${text.slice(0, max).trim()}...` : text;
 }
 
+// ─── Calendar + Share Helpers ─────────────────────────────────────────────────
+
+const APP_DOWNLOAD_URL = "https://your-app-download-link.com";
+const BRAND_PAGE_NAME = "Hackathon Calendar";
+
+function toGoogleCalendarDate(unix: number) {
+  return new Date(unix * 1000)
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
+}
+
+function getGoogleCalendarUrl(hackathon: Hackathon) {
+  const text = encodeURIComponent(hackathon.name);
+
+  const dates = `${toGoogleCalendarDate(
+    hackathon.start_time,
+  )}/${toGoogleCalendarDate(hackathon.end_time)}`;
+
+  const details = encodeURIComponent(
+    `${hackathon.description || "Hackathon"}\n\nHackathon Link: ${
+      hackathon.url
+    }`,
+  );
+
+  const location = encodeURIComponent(
+    `${getPlatform(hackathon.platform).label}${
+      hackathon.mode ? ` · ${hackathon.mode}` : ""
+    }`,
+  );
+
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${dates}&details=${details}&location=${location}`;
+}
+
+async function shareHackathon(hackathon: Hackathon) {
+  const meta = getPlatform(hackathon.platform);
+
+  const pageUrl =
+    typeof window !== "undefined" ? window.location.href : APP_DOWNLOAD_URL;
+
+  const shareTitle = `${hackathon.name} on ${meta.label}`;
+
+  const shareMessage = `Hey, check out this hackathon: ${hackathon.name}
+
+Platform: ${meta.label}
+Starts: ${formatDateTime(hackathon.start_time)}
+Duration: ${formatDuration(hackathon.duration)}
+
+I found it on ${BRAND_PAGE_NAME}.
+
+Download the app here:
+${APP_DOWNLOAD_URL}
+
+Explore more hackathons:
+${pageUrl}`;
+
+  try {
+    if (typeof navigator !== "undefined" && navigator.share) {
+      await navigator.share({
+        title: shareTitle,
+        text: shareMessage,
+        url: pageUrl,
+      });
+
+      return;
+    }
+
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      await navigator.clipboard.writeText(shareMessage);
+      window.alert("Hackathon share message copied to clipboard!");
+      return;
+    }
+
+    window.alert("Sharing is not supported on this browser.");
+  } catch (error) {
+    console.error("[HackathonSection] Failed to share hackathon:", error);
+  }
+}
+
+// ─── Action Icons ─────────────────────────────────────────────────────────────
+
+function CalendarPlusIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path
+        d="M8 2v4M16 2v4M3.5 9.5h17M6.5 4.5h11A3 3 0 0 1 20.5 7.5v10A3 3 0 0 1 17.5 20.5h-11A3 3 0 0 1 3.5 17.5v-10A3 3 0 0 1 6.5 4.5Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 13v4M10 15h4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ExternalLinkIcon() {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path
+        d="M14 5h5v5M19 5l-8 8"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M11 6H7.5A2.5 2.5 0 0 0 5 8.5v8A2.5 2.5 0 0 0 7.5 19h8A2.5 2.5 0 0 0 18 16.5V13"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg
+      width="21"
+      height="21"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <circle
+        cx="18"
+        cy="5"
+        r="2.5"
+        stroke="currentColor"
+        strokeWidth="1.9"
+      />
+      <circle
+        cx="6"
+        cy="12"
+        r="2.5"
+        stroke="currentColor"
+        strokeWidth="1.9"
+      />
+      <circle
+        cx="18"
+        cy="19"
+        r="2.5"
+        stroke="currentColor"
+        strokeWidth="1.9"
+      />
+      <path
+        d="M8.2 10.9L15.7 6.3"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8.2 13.1L15.7 17.7"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 // ─── Lottie Panel ─────────────────────────────────────────────────────────────
 
 function CatOnlyPanel() {
@@ -242,6 +427,7 @@ function HackathonListItem({
   variant: "upcoming" | "live";
 }) {
   const meta = getPlatform(hackathon.platform);
+  const googleCalendarUrl = getGoogleCalendarUrl(hackathon);
 
   const statusText =
     variant === "live"
@@ -249,12 +435,7 @@ function HackathonListItem({
       : `Starts in ${timeUntil(hackathon.start_time).replace(/^in\s*/, "")}`;
 
   return (
-    <a
-      href={hackathon.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group block min-h-[285px] rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-4 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]"
-    >
+    <article className="group block min-h-[285px] rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-4 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]">
       <div className="flex h-full flex-col">
         <HackathonBanner
           banner={hackathon.hackathon_banner}
@@ -301,16 +482,52 @@ function HackathonListItem({
           {hackathon.description ? clampText(hackathon.description) : "\u00A0"}
         </p>
 
-        <div className="mt-auto flex items-center gap-6 overflow-hidden pt-4 text-xs text-white/55">
+        <div className="mt-auto flex items-center justify-between gap-4 overflow-hidden pt-4 text-xs text-white/55">
           <span className="min-w-0 truncate">
             Starts · {formatDateTime(hackathon.start_time)}
           </span>
-          <span className="shrink-0">
+
+          <span className="ml-auto shrink-0 text-right">
             Duration · {formatDuration(hackathon.duration)}
           </span>
         </div>
+
+        <div className="mt-4 flex w-full items-center justify-between gap-3 border-t border-white/10 pt-3">
+          <a
+            href={googleCalendarUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-center text-[0.7rem] font-semibold text-purple-300 no-underline transition-all duration-200 hover:bg-purple-500/15"
+          >
+            <CalendarPlusIcon />
+            <span>Add Calendar</span>
+          </a>
+
+          <div className="ml-auto flex items-center justify-end gap-4">
+            <a
+              href={hackathon.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Visit hackathon"
+              title="Visit hackathon"
+              className="inline-flex items-center justify-center text-white/45 no-underline transition-all duration-200 hover:scale-110 hover:text-purple-300"
+            >
+              <ExternalLinkIcon />
+            </a>
+
+            <button
+              type="button"
+              onClick={() => shareHackathon(hackathon)}
+              aria-label="Share hackathon"
+              title="Share hackathon"
+              className="inline-flex items-center justify-center text-white/45 transition-all duration-200 hover:scale-110 hover:text-purple-300"
+            >
+              <ShareIcon />
+            </button>
+          </div>
+        </div>
       </div>
-    </a>
+    </article>
   );
 }
 
@@ -398,8 +615,13 @@ function ListSkeleton() {
             </div>
 
             <div className="mt-2 h-10 w-full animate-pulse rounded bg-white/10" />
+
             <div className="mt-auto pt-4">
               <div className="h-3 w-full animate-pulse rounded bg-white/10" />
+            </div>
+
+            <div className="mt-4 border-t border-white/10 pt-3">
+              <div className="h-9 w-full animate-pulse rounded-2xl bg-white/10" />
             </div>
           </div>
         ))}
@@ -458,7 +680,7 @@ export default function HackathonSection() {
   return (
     <section
       id="hackathons"
-      className="relative font-rubik bg-[#020202] px-5 py-16 md:px-8 lg:px-10"
+      className="relative bg-[#020202] px-5 py-16 font-rubik md:px-8 lg:px-10"
     >
       <div className="mx-auto max-w-7xl">
         <div className="mb-12 text-center">
