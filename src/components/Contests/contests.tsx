@@ -899,7 +899,7 @@ function ContestCalendar({
             }}
             className="rounded-xl border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs font-semibold text-purple-300 transition hover:bg-purple-500/15"
           >
-            Today
+            This Month
           </button>
 
           <button
@@ -1255,6 +1255,35 @@ function StatusDropdown({
   onChange: (value: Tab) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleClickOutside = (event: PointerEvent) => {
+      const target = event.target;
+
+      if (!(target instanceof Node)) return;
+
+      if (!dropdownRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [open]);
 
   const options: Tab[] = ["upcoming", "live"];
 
@@ -1286,7 +1315,7 @@ function StatusDropdown({
   const selected = statusMeta[value];
 
   return (
-    <div className="relative">
+    <div ref={dropdownRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
@@ -1352,6 +1381,35 @@ function PlatformDropdown({
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleClickOutside = (event: PointerEvent) => {
+      const target = event.target;
+
+      if (!(target instanceof Node)) return;
+
+      if (!dropdownRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [open]);
 
   const selectedMeta =
     value === "all"
@@ -1364,7 +1422,7 @@ function PlatformDropdown({
       : getPlatform(value);
 
   return (
-    <div className="relative">
+    <div ref={dropdownRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
@@ -1440,6 +1498,7 @@ function PlatformDropdown({
     </div>
   );
 }
+
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -1682,9 +1741,10 @@ export default function ContestSection() {
                       add events directly to Google Calendar.
                     </p> */}
 
-                    <h3 className="mt-1 text-2xl font-bold capitalize text-white">
-                      {activeTab}
-                    </h3>
+                    <h3 className="mt-1 text-2xl font-bold text-white">
+  {activeTab === "upcoming" ? "Upcoming" : activeTab === "live" ? "Live" : "Ended"}{" "}
+  <span className="text-purple-500">Contests</span>
+</h3>
                   </div>
 
                   <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-white/40">
