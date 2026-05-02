@@ -188,7 +188,7 @@ Platform: ${meta.label}
 Starts: ${formatDateTime(hackathon.start_time)}
 Duration: ${formatDuration(hackathon.duration)}
 
-I found it on ${BRAND_PAGE_NAME}.
+I found it on ${BRAND_PAGE_NAME}. You can track upcoming coding Contests, Hackathons and Bug Bounties, visit their links, and add them to your calendar easily.
 
 Download the app here:
 ${APP_DOWNLOAD_URL}
