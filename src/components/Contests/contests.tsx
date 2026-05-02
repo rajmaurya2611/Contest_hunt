@@ -388,7 +388,7 @@ const STATUS_STYLES: Record<
     dot: "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]",
     pill: "border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/15",
     text: "text-red-400",
-    borderTop: "from-red-500 via-red-500/50 to-transparent",
+    borderTop: "from-transparent via-purple-500 to-transparent",
   },
   upcoming: {
     badge: "border-purple-500/30 bg-purple-500/10 text-purple-400",
@@ -396,14 +396,14 @@ const STATUS_STYLES: Record<
     pill:
       "border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/15",
     text: "text-purple-400",
-    borderTop: "from-purple-500 via-purple-500/50 to-transparent",
+    borderTop: "from-transparent via-purple-500 to-transparent",
   },
   ended: {
     badge: "border-white/10 bg-white/[0.04] text-white/35",
     dot: "bg-white/25",
     pill: "border-white/10 bg-white/[0.04] text-white/40 hover:bg-white/[0.06]",
     text: "text-white/35",
-    borderTop: "from-white/20 via-white/10 to-transparent",
+    borderTop: "from-transparent via-white/10 to-transparent",
   },
 };
 
