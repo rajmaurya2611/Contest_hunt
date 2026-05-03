@@ -11,6 +11,47 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type ApiContestStatus = "ongoing" | "upcoming" | "ended";
+
+interface ApiContest {
+  id: number;
+  name: string;
+  url: string;
+  start_time: number;
+  end_time: number;
+  duration: number;
+  description: string | null;
+  platform_id: number;
+  category_id: number;
+  banner: string | null;
+  mode: string | null;
+  location: string | null;
+  prize_pool: string | null;
+  amount: number | string | null;
+  currency: string | null;
+  difficulty: string | null;
+  tags: string[] | string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  platform_name: string;
+  category_name: string;
+  status: ApiContestStatus;
+}
+
+interface ContestApiResponse {
+  success: boolean;
+  data: ApiContest[];
+  message?: string;
+  timestamp?: string;
+  pagination?: {
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+  };
+}
+
 interface Contest {
   id: number;
   name: string;
@@ -21,6 +62,7 @@ interface Contest {
   duration: number;
   description: string;
   created_at: string;
+  status: Status;
 }
 
 type Status = "live" | "upcoming" | "ended";
@@ -93,11 +135,32 @@ const PLATFORM_META: Record<string, PlatformMeta> = {
     logo: "/icons/geeksforgeeks.png",
     pill: "border-green-500/30 bg-green-500/10 text-green-400",
   },
+  hackerrank: {
+    label: "HackerRank",
+    text: "text-green-400",
+    dot: "bg-green-400",
+    logo: "/icons/hackerrank.png",
+    pill: "border-green-500/30 bg-green-500/10 text-green-400",
+  },
+  topcoder:{
+    label: "TopCoder",
+    text: "text-cyan-400",
+    dot: "bg-cyan-400",
+    logo: "/icons/topcoder.png",
+    pill: "border-cyan-500/30 bg-cyan-500/10 text-cyan-400",
+  },
+  toph:{
+    label: "Toph",
+    text: "text-purple-400",
+    dot: "bg-purple-400",
+    logo: "/icons/toph.png",
+    pill: "border-purple-500/30 bg-purple-500/10 text-purple-400",
+  },
 };
 
 function getPlatform(platform: string): PlatformMeta {
   return (
-    PLATFORM_META[platform.toLowerCase()] ?? {
+    PLATFORM_META[platform.toLowerCase().replace(/[^a-z0-9]/g, "")] ?? {
       label: platform,
       text: "text-purple-400",
       dot: "bg-purple-400",
@@ -105,6 +168,104 @@ function getPlatform(platform: string): PlatformMeta {
       pill: "border-purple-500/30 bg-purple-500/10 text-purple-400",
     }
   );
+}
+
+// ─── API Helpers ──────────────────────────────────────────────────────────────
+
+function mapApiStatusToUiStatus(
+  apiStatus: ApiContestStatus,
+  start: number,
+  end: number,
+): Status {
+  if (apiStatus === "ongoing") return "live";
+  if (apiStatus === "upcoming") return "upcoming";
+  if (apiStatus === "ended") return "ended";
+
+  return getStatus(start, end);
+}
+
+function normalizeApiContest(contest: ApiContest): Contest {
+  return {
+    id: contest.id,
+    name: contest.name,
+    platform: contest.platform_name,
+    url: contest.url,
+    start_time: contest.start_time,
+    end_time: contest.end_time,
+    duration: contest.duration,
+    description: contest.description || "",
+    created_at: contest.created_at,
+    status: mapApiStatusToUiStatus(
+      contest.status,
+      contest.start_time,
+      contest.end_time,
+    ),
+  };
+}
+
+function buildContestApiUrl(baseUrl: string, skip: number, limit: number) {
+  const url = new URL(baseUrl, window.location.origin);
+
+  url.searchParams.set("skip", String(skip));
+  url.searchParams.set("limit", String(limit));
+
+  return url.toString();
+}
+
+async function fetchAllContestsFromNewApi(baseUrl: string) {
+  const limit = 100;
+  let skip = 0;
+  let hasMore = true;
+
+  const allContests: Contest[] = [];
+
+  while (hasMore) {
+    const url = buildContestApiUrl(baseUrl, skip, limit);
+
+    console.info("[ContestSection] Fetching contests:", {
+      url,
+      skip,
+      limit,
+    });
+
+    const res = await fetch(url);
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const json = (await res.json()) as ContestApiResponse;
+
+    if (!json.success) {
+      throw new Error(json.message || "Contest API returned success=false");
+    }
+
+    if (!Array.isArray(json.data)) {
+      throw new Error("Contest API data is not an array");
+    }
+
+    const normalized = json.data.map(normalizeApiContest);
+    allContests.push(...normalized);
+
+    console.info("[ContestSection] Contest page loaded:", {
+      received: json.data.length,
+      totalLoaded: allContests.length,
+      pagination: json.pagination,
+    });
+
+    hasMore = Boolean(json.pagination?.has_more);
+
+    const pageLimit = Number(json.pagination?.limit || limit);
+    const pageOffset = Number(json.pagination?.offset ?? skip);
+
+    skip = pageOffset + pageLimit;
+
+    if (json.data.length === 0) {
+      break;
+    }
+  }
+
+  return allContests;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -243,10 +404,6 @@ function getGoogleCalendarUrl(contest: Contest) {
 }
 
 // ─── Strict Linked Scroll Handoff ─────────────────────────────────────────────
-// Rule:
-// 1. Column under cursor scrolls first.
-// 2. After it reaches top/bottom, the other column scrolls.
-// 3. Page scroll is allowed ONLY when both columns are already at top/bottom.
 
 function getNormalizedNativeWheelDelta(
   event: globalThis.WheelEvent,
@@ -322,28 +479,15 @@ function createStrictLinkedWheelHandler(
       ? canScrollElement(pairedElement, deltaY)
       : false;
 
-    /**
-     * Critical rule:
-     * If both columns are already exhausted in this direction,
-     * let the browser scroll the full page naturally.
-     */
     if (!canCurrentScrollAtStart && !canPairedScrollAtStart) {
       return;
     }
 
-    /**
-     * If even one inner column can still scroll,
-     * block page scroll completely.
-     */
     event.preventDefault();
     event.stopPropagation();
 
     let remainingDelta = deltaY;
 
-    /**
-     * Priority 1:
-     * Scroll column under cursor first.
-     */
     if (canCurrentScrollAtStart) {
       remainingDelta = scrollElementAndReturnRemaining(
         currentElement,
@@ -351,10 +495,6 @@ function createStrictLinkedWheelHandler(
       );
     }
 
-    /**
-     * Priority 2:
-     * Scroll the other column only after current column hits boundary.
-     */
     if (
       Math.abs(remainingDelta) > 1 &&
       pairedElement &&
@@ -362,12 +502,6 @@ function createStrictLinkedWheelHandler(
     ) {
       scrollElementAndReturnRemaining(pairedElement, remainingDelta);
     }
-
-    /**
-     * No window.scrollBy here.
-     * Page scroll unlocks only on the next wheel event when both columns
-     * are already at top/bottom.
-     */
   };
 }
 
@@ -442,7 +576,8 @@ function PlatformLogo({
 
 // ─── Share Config ─────────────────────────────────────────────────────────────
 
-const APP_DOWNLOAD_URL = "https://play.google.com/store/apps/details?id=com.miraidyo.contesthunt&pcampaignid=web_share";
+const APP_DOWNLOAD_URL =
+  "https://play.google.com/store/apps/details?id=com.miraidyo.contesthunt&pcampaignid=web_share";
 const BRAND_PAGE_NAME = "Contest Calendar";
 
 async function shareContest(contest: Contest) {
@@ -600,7 +735,7 @@ function ShareIcon() {
 
 function ContestCard({ contest }: { contest: Contest }) {
   const meta = getPlatform(contest.platform);
-  const status = getStatus(contest.start_time, contest.end_time);
+  const status = contest.status;
   const styles = STATUS_STYLES[status];
   const googleCalendarUrl = getGoogleCalendarUrl(contest);
 
@@ -655,7 +790,9 @@ function ContestCard({ contest }: { contest: Contest }) {
 
         <div className="flex items-center justify-between gap-4">
           <span className="text-white/35">Duration</span>
-          <span className="text-white/60">{formatDuration(contest.duration)}</span>
+          <span className="text-white/60">
+            {formatDuration(contest.duration)}
+          </span>
         </div>
 
         <div className="flex items-center justify-between gap-4">
@@ -719,7 +856,7 @@ function CalendarPill({
   compact: boolean;
   onDetails: (contest: Contest) => void;
 }) {
-  const status = getStatus(contest.start_time, contest.end_time);
+  const status = contest.status;
   const styles = STATUS_STYLES[status];
   const meta = getPlatform(contest.platform);
   const [imgError, setImgError] = useState(false);
@@ -1021,7 +1158,7 @@ function ContestDetailsModal({
   if (!contest) return null;
 
   const meta = getPlatform(contest.platform);
-  const status = getStatus(contest.start_time, contest.end_time);
+  const status = contest.status;
   const styles = STATUS_STYLES[status];
   const googleCalendarUrl = getGoogleCalendarUrl(contest);
 
@@ -1499,7 +1636,6 @@ function PlatformDropdown({
   );
 }
 
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function ContestSection() {
@@ -1520,7 +1656,9 @@ export default function ContestSection() {
   const cardsScrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    (async () => {
+    let isMounted = true;
+
+    async function loadContests() {
       try {
         const apiUrl = import.meta.env.VITE_CONTESTS_API_URL;
 
@@ -1528,20 +1666,40 @@ export default function ContestSection() {
           throw new Error("VITE_CONTESTS_API_URL is not defined");
         }
 
-        const res = await fetch(apiUrl);
+        const allContests = await fetchAllContestsFromNewApi(apiUrl);
 
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
+        console.info("[ContestSection] All contests loaded:", {
+          total: allContests.length,
+          live: allContests.filter((contest) => contest.status === "live").length,
+          upcoming: allContests.filter((contest) => contest.status === "upcoming")
+            .length,
+          ended: allContests.filter((contest) => contest.status === "ended")
+            .length,
+        });
+
+        if (isMounted) {
+          setContests(allContests);
         }
-
-        const data: Contest[] = await res.json();
-        setContests(Array.isArray(data) ? data : []);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Failed to fetch contests");
+        console.error("[ContestSection] Failed to fetch contests:", err);
+
+        if (isMounted) {
+          setError(
+            err instanceof Error ? err.message : "Failed to fetch contests",
+          );
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
-    })();
+    }
+
+    loadContests();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const filteredContests = useMemo(() => {
@@ -1549,7 +1707,7 @@ export default function ContestSection() {
 
     return contests
       .filter((contest) => {
-        const status = getStatus(contest.start_time, contest.end_time);
+        const status = contest.status;
 
         const matchesTab = status === activeTab;
         const matchesPlatform =
@@ -1605,13 +1763,9 @@ export default function ContestSection() {
 
   const counts = useMemo<Record<Tab, number>>(() => {
     return {
-      live: contests.filter((c) => getStatus(c.start_time, c.end_time) === "live")
-        .length,
-      upcoming: contests.filter(
-        (c) => getStatus(c.start_time, c.end_time) === "upcoming",
-      ).length,
-      ended: contests.filter((c) => getStatus(c.start_time, c.end_time) === "ended")
-        .length,
+      live: contests.filter((c) => c.status === "live").length,
+      upcoming: contests.filter((c) => c.status === "upcoming").length,
+      ended: contests.filter((c) => c.status === "ended").length,
     };
   }, [contests]);
 
@@ -1661,32 +1815,33 @@ export default function ContestSection() {
 
       <div className="relative z-10 mx-auto max-w-7xl">
         <div className="mb-8 grid gap-3 md:grid-cols-12 md:items-center">
-  <div className="relative w-full md:col-span-8">
-    <input
-      type="text"
-      placeholder="Search contests or platforms..."
-      value={search}
-      onChange={(e) => setSearch(e.target.value)}
-      className="h-[46px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm text-white outline-none transition-all duration-200 placeholder:text-white/30 focus:border-purple-500/50 focus:bg-white/[0.06] focus:shadow-[0_0_0_4px_rgba(140,69,255,0.08)]"
-    />
-  </div>
+          <div className="relative w-full md:col-span-8">
+            <input
+              type="text"
+              placeholder="Search contests or platforms..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-[46px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm text-white outline-none transition-all duration-200 placeholder:text-white/30 focus:border-purple-500/50 focus:bg-white/[0.06] focus:shadow-[0_0_0_4px_rgba(140,69,255,0.08)]"
+            />
+          </div>
 
-  <div className="md:col-span-2">
-    <StatusDropdown
-      value={activeTab}
-      counts={counts}
-      onChange={(nextTab) => setActiveTab(nextTab)}
-    />
-  </div>
+          <div className="md:col-span-2">
+            <StatusDropdown
+              value={activeTab}
+              counts={counts}
+              onChange={(nextTab) => setActiveTab(nextTab)}
+            />
+          </div>
 
-  <div className="md:col-span-2">
-    <PlatformDropdown
-      value={activePlatform}
-      platforms={platforms}
-      onChange={(nextPlatform) => setActivePlatform(nextPlatform)}
-    />
-  </div>
-</div>
+          <div className="md:col-span-2">
+            <PlatformDropdown
+              value={activePlatform}
+              platforms={platforms}
+              onChange={(nextPlatform) => setActivePlatform(nextPlatform)}
+            />
+          </div>
+        </div>
+
         {loading ? (
           <div className="grid gap-6 lg:grid-cols-3">
             <CalendarSkeleton />
@@ -1710,7 +1865,7 @@ export default function ContestSection() {
             >
               <div
                 ref={calendarScrollRef}
-                className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto pr-1"
+                className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto lg:pr-1"
               >
                 <ContestCalendar
                   month={calendarMonth}
@@ -1732,19 +1887,18 @@ export default function ContestSection() {
             >
               <div
                 ref={cardsScrollRef}
-                className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto pr-1"
+                className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto lg:pr-1"
               >
                 <div className="mb-4 flex items-end justify-between border-b border-white/10 pb-4">
                   <div>
-                    {/* <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-white/45">
-                      Browse contest cards, inspect dates in calendar view, and
-                      add events directly to Google Calendar.
-                    </p> */}
-
                     <h3 className="mt-1 text-2xl font-bold text-white">
-  {activeTab === "upcoming" ? "Upcoming" : activeTab === "live" ? "Live" : "Ended"}{" "}
-  <span className="text-purple-500">Contests</span>
-</h3>
+                      {activeTab === "upcoming"
+                        ? "Upcoming"
+                        : activeTab === "live"
+                          ? "Live"
+                          : "Ended"}{" "}
+                      <span className="text-purple-500">Contests</span>
+                    </h3>
                   </div>
 
                   <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-white/40">
@@ -1766,8 +1920,8 @@ export default function ContestSection() {
                   <div
                     className={
                       calendarExpanded
-                        ? "grid gap-5 pb-1"
-                        : "grid gap-5 pb-1 sm:grid-cols-2"
+                        ? "grid w-full gap-5 pb-1"
+                        : "grid w-full gap-5 pb-1 sm:grid-cols-2"
                     }
                   >
                     {filteredContests.map((contest) => (
