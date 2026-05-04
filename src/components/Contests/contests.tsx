@@ -1949,4 +1949,5 @@ export default function ContestSection() {
       />
     </section>
   );
+  
 }
