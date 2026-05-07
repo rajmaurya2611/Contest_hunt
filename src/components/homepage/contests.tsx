@@ -478,14 +478,14 @@ function PlatformLogo({
 
   if (imgError) {
     return (
-      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] transition-transform duration-300 group-hover:scale-110 md:h-[68px] md:w-[68px]">
+      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] transition-transform duration-300 group-hover:scale-110">
         <span className={`h-3.5 w-3.5 rounded-full ${dotClass}`} />
       </div>
     );
   }
 
   return (
-    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] p-3 transition-transform duration-300 group-hover:scale-110 md:h-[68px] md:w-[68px]">
+    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] p-3 transition-transform duration-300 group-hover:scale-110">
       <img
         src={src}
         alt={alt}
@@ -514,12 +514,12 @@ function ContestListItem({
       : `Starts · ${timeUntil(contest.start_time).replace(/^in\s*/, "")}`;
 
   return (
-    <article className="group flex h-[176px] w-full min-w-0 flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-4 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]">
-      <div className="flex min-w-0 items-start gap-4">
+    <article className="group flex h-56 w-full min-w-0 flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-4 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]">
+      <div className="flex min-h-0 min-w-0 flex-1 items-start gap-4">
         <PlatformLogo src={meta.logo} alt={meta.label} dotClass={meta.dot} />
 
-        <div className="min-w-0 flex-1">
-          <div className="mb-2 flex min-w-0 items-start justify-between gap-3">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="mb-3 flex min-w-0 items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
 
@@ -530,28 +530,28 @@ function ContestListItem({
               </span>
             </div>
 
-            <span className="max-w-[120px] shrink-0 truncate rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-[0.65rem] font-bold tracking-widest text-purple-400 sm:max-w-none">
+            <span className="max-w-32 shrink-0 truncate rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-[0.65rem] font-bold tracking-widest text-purple-400 sm:max-w-none">
               {statusText}
             </span>
           </div>
 
-          <h4 className="line-clamp-2 min-w-0 text-sm font-semibold leading-6 text-white transition-colors duration-200 group-hover:text-purple-300">
+          <h4 className="line-clamp-2 min-h-12 min-w-0 text-sm font-semibold leading-6 text-white transition-colors duration-200 group-hover:text-purple-300">
             {contest.name}
           </h4>
 
-          <div className="mt-4 flex min-w-0 items-center gap-6 overflow-hidden text-xs text-white/55">
+          <div className="mt-auto grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 overflow-hidden pt-3 text-xs text-white/55">
             <span className="min-w-0 truncate">
               Starts · {formatDateTime(contest.start_time)}
             </span>
 
-            <span className="shrink-0">
+            <span className="shrink-0 whitespace-nowrap text-right">
               Duration · {formatDuration(contest.duration)}
             </span>
           </div>
         </div>
       </div>
 
-      <div className="mt-4 flex w-full min-w-0 items-center justify-between gap-3 border-t border-white/10 pt-3">
+      <div className="mt-4 flex w-full min-w-0 shrink-0 items-center justify-between gap-3 border-t border-white/10 pt-3">
         <a
           href={googleCalendarUrl}
           target="_blank"
@@ -654,7 +654,7 @@ function ListSkeleton() {
         {Array.from({ length: 5 }).map((_, index) => (
           <div
             key={index}
-            className="h-[176px] w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+            className="h-56 w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4"
           >
             <div className="flex min-w-0 items-start gap-4">
               <div className="h-16 w-16 shrink-0 animate-pulse rounded-2xl bg-white/10" />
@@ -665,9 +665,9 @@ function ListSkeleton() {
                   <div className="h-7 w-28 shrink-0 animate-pulse rounded-full bg-white/10" />
                 </div>
 
-                <div className="mt-3 h-4 w-4/5 animate-pulse rounded bg-white/10" />
+                <div className="mt-4 h-4 w-4/5 animate-pulse rounded bg-white/10" />
                 <div className="mt-2 h-4 w-3/5 animate-pulse rounded bg-white/10" />
-                <div className="mt-5 h-3 w-full animate-pulse rounded bg-white/10" />
+                <div className="mt-8 h-3 w-full animate-pulse rounded bg-white/10" />
               </div>
             </div>
           </div>
@@ -784,7 +784,7 @@ export default function ContestSection() {
   return (
     <section
       id="contests"
-      className="relative overflow-x-clip bg-[#020202] px-5 py-16 font-rubik md:px-8 lg:px-10"
+      className="relative bg-[#020202] px-5 py-16 font-rubik md:px-8 lg:px-10"
     >
       <div className="mx-auto w-full max-w-7xl min-w-0">
         <div className="mb-12 text-center">
@@ -794,12 +794,10 @@ export default function ContestSection() {
         </div>
 
         {loading ? (
-          <div className="grid w-full min-w-0 gap-8 lg:min-h-[140vh] lg:grid-cols-3">
-            <div className="w-full min-w-0">
-              <div className="w-full min-w-0 self-start lg:sticky lg:top-24">
-                <div className="w-full min-w-0 overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-b from-[#321255] via-[#1a0d2b] to-[#050505]">
-                  <div className="h-[70vh] w-full animate-pulse rounded-[28px] bg-white/5 lg:h-[82vh]" />
-                </div>
+          <div className="grid w-full min-w-0 gap-8 lg:min-h-[140vh] lg:grid-cols-3 lg:items-start">
+            <div className="w-full min-w-0 lg:sticky lg:top-24 lg:self-start">
+              <div className="w-full min-w-0 overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-b from-[#321255] via-[#1a0d2b] to-[#050505]">
+                <div className="h-[70vh] w-full animate-pulse rounded-[28px] bg-white/5 lg:h-[82vh]" />
               </div>
             </div>
 
@@ -811,11 +809,9 @@ export default function ContestSection() {
             ⚠️ {error}
           </div>
         ) : (
-          <div className="grid w-full min-w-0 gap-8 lg:min-h-[140vh] lg:grid-cols-3">
-            <div className="w-full min-w-0">
-              <div className="w-full min-w-0 self-start lg:sticky lg:top-24">
-                <CatOnlyPanel />
-              </div>
+          <div className="grid w-full min-w-0 gap-8 lg:min-h-[140vh] lg:grid-cols-3 lg:items-start">
+            <div className="w-full min-w-0 lg:sticky lg:top-24 lg:self-start">
+              <CatOnlyPanel />
             </div>
 
             <ContestColumn
