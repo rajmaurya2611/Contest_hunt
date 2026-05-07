@@ -514,7 +514,7 @@ function ContestListItem({
       : `Starts · ${timeUntil(contest.start_time).replace(/^in\s*/, "")}`;
 
   return (
-    <article className="group block min-h-[146px] w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-4 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]">
+    <article className="group flex h-[176px] w-full min-w-0 flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-4 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]">
       <div className="flex min-w-0 items-start gap-4">
         <PlatformLogo src={meta.logo} alt={meta.label} dotClass={meta.dot} />
 
@@ -654,7 +654,7 @@ function ListSkeleton() {
         {Array.from({ length: 5 }).map((_, index) => (
           <div
             key={index}
-            className="min-h-[146px] w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+            className="h-[176px] w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4"
           >
             <div className="flex min-w-0 items-start gap-4">
               <div className="h-16 w-16 shrink-0 animate-pulse rounded-2xl bg-white/10" />
@@ -784,7 +784,7 @@ export default function ContestSection() {
   return (
     <section
       id="contests"
-      className="relative overflow-x-hidden bg-[#020202] px-5 py-16 font-rubik md:px-8 lg:px-10"
+      className="relative overflow-x-clip bg-[#020202] px-5 py-16 font-rubik md:px-8 lg:px-10"
     >
       <div className="mx-auto w-full max-w-7xl min-w-0">
         <div className="mb-12 text-center">
@@ -796,7 +796,7 @@ export default function ContestSection() {
         {loading ? (
           <div className="grid w-full min-w-0 gap-8 lg:min-h-[140vh] lg:grid-cols-3">
             <div className="w-full min-w-0">
-              <div className="w-full min-w-0 lg:sticky lg:top-24">
+              <div className="w-full min-w-0 self-start lg:sticky lg:top-24">
                 <div className="w-full min-w-0 overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-b from-[#321255] via-[#1a0d2b] to-[#050505]">
                   <div className="h-[70vh] w-full animate-pulse rounded-[28px] bg-white/5 lg:h-[82vh]" />
                 </div>
@@ -813,7 +813,7 @@ export default function ContestSection() {
         ) : (
           <div className="grid w-full min-w-0 gap-8 lg:min-h-[140vh] lg:grid-cols-3">
             <div className="w-full min-w-0">
-              <div className="w-full min-w-0 lg:sticky lg:top-24">
+              <div className="w-full min-w-0 self-start lg:sticky lg:top-24">
                 <CatOnlyPanel />
               </div>
             </div>
