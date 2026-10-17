@@ -116,13 +116,14 @@ type HackathonPagination = {
 type HackathonPage = {
   contests: Contest[];
   pagination: HackathonPagination;
+  receivedCount: number;
 };
 
 
 
 type Status = "live" | "upcoming" | "ended";
 
-type Tab = Status;
+type Tab = "live" | "upcoming";
 
 
 
@@ -266,29 +267,19 @@ function getContestStatus(contest: Contest): Status {
 }
 
 function toApiStatusFilter(status: Tab): ApiStatusFilter {
-  if (status === "live") return "active";
-  if (status === "ended") return "past";
-  return "upcoming";
+  return status === "live" ? "active" : "upcoming";
 }
 
 
 
 function formatDuration(seconds: number) {
-
-  const h = Math.floor(seconds / 3600);
-
-  const m = Math.floor((seconds % 3600) / 60);
-
-
-
-  if (h === 0) return `${m}m`;
-
-  if (m === 0) return `${h}h`;
-
-
-
-  return `${h}h ${m}m`;
-
+  const duration = Math.max(0, Number(seconds) || 0);
+  const d = Math.floor(duration / 86400);
+  const h = Math.floor((duration % 86400) / 3600);
+  const m = Math.floor((duration % 3600) / 60);
+  if (d > 0) return h > 0 ? `${d}d ${h}h` : `${d}d`;
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  return `${m}m`;
 }
 
 
@@ -550,7 +541,7 @@ function normalizeContestResponse(payload: unknown): Contest[] {
     .filter((contest): contest is Contest => contest !== null);
 }
 
-const CARD_PAGE_SIZE = 100;
+const CARD_PAGE_SIZE = 20;
 const MASTER_PAGE_SIZE = 1000;
 const SEARCH_DEBOUNCE_MS = 350;
 const LOAD_MORE_THRESHOLD_PX = 500;
@@ -691,45 +682,54 @@ async function fetchHackathonPage(
     query.limit,
   );
 
+  const record = payload && typeof payload === "object" ? payload as { data?: unknown } : null;
+  const receivedCount = Array.isArray(payload)
+    ? payload.length
+    : Array.isArray(record?.data) ? record.data.length : 0;
+
   return {
     contests,
     pagination,
+    receivedCount,
   };
 }
 
 async function fetchCompleteHackathonCatalog(
   baseUrl: string,
   signal?: AbortSignal,
-) {
+): Promise<Contest[]> {
   let skip = 0;
   let allContests: Contest[] = [];
+  const maxPages = 200;
 
-  while (true) {
+  for (let pageNumber = 0; pageNumber < maxPages; pageNumber += 1) {
     const page = await fetchHackathonPage(
       baseUrl,
-      {
-        skip,
-        limit: MASTER_PAGE_SIZE,
-      },
+      { skip, limit: MASTER_PAGE_SIZE },
       signal,
     );
-
+    const before = allContests.length;
     allContests = mergeUniqueContests(allContests, page.contests);
 
-    if (!page.pagination.has_more || page.contests.length === 0) {
-      break;
+    if (!page.pagination.has_more) {
+      // Never claim the calendar is complete when the master API is truncated.
+      if (allContests.length < page.pagination.total) {
+        throw new Error(
+          `Hackathon catalogue incomplete: ${allContests.length} of ${page.pagination.total} records`,
+        );
+      }
+      return allContests;
     }
 
-    const nextSkip = page.pagination.offset + page.contests.length;
-
-    if (nextSkip <= skip) {
-      break;
+    const nextSkip = Math.max(skip + page.receivedCount,
+      page.pagination.offset + page.receivedCount);
+    if (page.receivedCount === 0 || nextSkip <= skip ||
+        allContests.length === before) {
+      throw new Error("Hackathon catalogue pagination did not advance");
     }
-
     skip = nextSkip;
   }
-
-  return allContests;
+  throw new Error("Hackathon catalogue exceeded the safety pagination limit");
 }
 
 
@@ -2180,6 +2180,10 @@ function ContestCalendar({
 }) {
 
   const days = useMemo(() => getCalendarDays(month), [month]);
+  const monthStartCount = useMemo(() => contests.filter((contest) => {
+    const day = new Date(contest.start_time * 1000);
+    return day.getMonth() === month.getMonth() && day.getFullYear() === month.getFullYear();
+  }).length, [contests, month]);
 
 
 
@@ -2346,6 +2350,9 @@ function ContestCalendar({
               {getMonthLabel(month)}
 
             </h3>
+            <p className="mt-1 text-[0.68rem] text-white/35">
+              {monthStartCount} starting this month · {contests.length} active in all months
+            </p>
 
           </div>
 
@@ -3125,6 +3132,8 @@ function StatusDropdown({
 
   counts,
 
+  countsReady = true,
+
   onChange,
 
 }: {
@@ -3132,6 +3141,8 @@ function StatusDropdown({
   value: Tab;
 
   counts: Record<Tab, number>;
+
+  countsReady?: boolean;
 
   onChange: (value: Tab) => void;
 
@@ -3239,15 +3250,7 @@ function StatusDropdown({
 
     },
 
-    ended: {
 
-      label: "Ended",
-
-      dot: "bg-white/30",
-
-      active: "text-white/40",
-
-    },
 
   };
 
@@ -3279,7 +3282,7 @@ function StatusDropdown({
 
           <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/40">
 
-            {counts[value]}
+            {countsReady ? counts[value] : "…"}
 
           </span>
 
@@ -3345,7 +3348,7 @@ function StatusDropdown({
 
                 <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/40">
 
-                  {counts[option]}
+                  {countsReady ? counts[option] : "…"}
 
                 </span>
 
@@ -3634,15 +3637,21 @@ function PlatformDropdown({
 export default function ContestSection() {
   const apiUrl = import.meta.env.VITE_HACKATHONS_API_URL as string | undefined;
 
-  // Card feed: server-filtered and paginated 100 at a time.
+  // The cards and calendar intentionally have independent retrieval lifecycles.
+  // Cards: server-filtered pages of 20, appended on scroll.
+  // Calendar: complete unfiltered dataset, then hide ended hackathons.
   const [contests, setContests] = useState<Contest[]>([]);
-  const [feedTotal, setFeedTotal] = useState(0);
+  const [feedServerTotal, setFeedServerTotal] = useState(0);
   const [feedNextOffset, setFeedNextOffset] = useState(0);
-  const [feedHasMore, setFeedHasMore] = useState(false);
+  const [serverHasMore, setServerHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [feedRefreshing, setFeedRefreshing] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null);
 
-  // Master catalog: complete dataset for calendar, platform list and exact counts.
   const [masterContests, setMasterContests] = useState<Contest[]>([]);
+  const [catalogReady, setCatalogReady] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [catalogReloadKey, setCatalogReloadKey] = useState(0);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -3653,310 +3662,252 @@ export default function ContestSection() {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [selectedContest, setSelectedContest] = useState<Contest | null>(null);
   const [calendarExpanded, setCalendarExpanded] = useState(false);
-  const [focusedCalendarDate, setFocusedCalendarDate] = useState<string | null>(
-    null,
-  );
+  const [focusedCalendarDate, setFocusedCalendarDate] = useState<string | null>(null);
 
   const calendarScrollRef = useRef<HTMLDivElement | null>(null);
   const cardsScrollRef = useRef<HTMLDivElement | null>(null);
-
   const feedGenerationRef = useRef(0);
+  const feedControllerRef = useRef<AbortController | null>(null);
   const loadMoreAbortRef = useRef<AbortController | null>(null);
   const loadingMoreRef = useRef(false);
 
-  // Search remains instant in the input, but API traffic is debounced.
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      setDebouncedSearch(search.trim());
-    }, SEARCH_DEBOUNCE_MS);
-
-    return () => window.clearTimeout(timeoutId);
+    const id = window.setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(id);
   }, [search]);
 
-  // Full catalog for calendar + complete platform options + accurate counts.
-  // Today this is one call (limit=1000). If the backend ever grows beyond 1000,
-  // fetchCompleteHackathonCatalog automatically follows has_more using skip.
   useEffect(() => {
-    if (!apiUrl) return;
-
+    if (!apiUrl) {
+      setCatalogError("VITE_HACKATHONS_API_URL is not defined");
+      return;
+    }
     const controller = new AbortController();
+    setCatalogReady(false);
+    setCatalogError(null);
 
-    (async () => {
-      try {
-        const completeCatalog = await fetchCompleteHackathonCatalog(
-          apiUrl,
-          controller.signal,
-        );
-
-        if (!controller.signal.aborted) {
-          setMasterContests(completeCatalog);
-        }
-      } catch (err: unknown) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-
-        // Master loading is intentionally non-fatal. The card feed can still work,
-        // and the calendar/platforms fall back to whatever card data is available.
-        console.error("[ContestSection] Failed to load master hackathon catalog:", err);
-      }
-    })();
+    void fetchCompleteHackathonCatalog(apiUrl, controller.signal)
+      .then((catalog) => {
+        if (controller.signal.aborted) return;
+        setMasterContests(catalog);
+        setCatalogReady(true);
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        const message = err instanceof Error ? err.message : "Failed to load the full hackathon calendar";
+        console.error("[Hackathons] Catalogue error:", err);
+        setCatalogError(message);
+      });
 
     return () => controller.abort();
-  }, [apiUrl]);
+  }, [apiUrl, catalogReloadKey]);
+
+  // Platform choices and global counts MUST NOT depend on loaded card pages.
+  const availableContests = useMemo(() => masterContests.filter(
+    (contest) => getContestStatus(contest) !== "ended",
+  ), [masterContests]);
+
+  const counts = useMemo<Record<Tab, number>>(() => {
+    const result: Record<Tab, number> = { upcoming: 0, live: 0 };
+    for (const contest of availableContests) {
+      const status = getContestStatus(contest);
+      if (status === "upcoming" || status === "live") result[status] += 1;
+    }
+    return result;
+  }, [availableContests]);
 
   const platformIdByName = useMemo(() => {
     const map = new Map<string, number>();
-
-    masterContests.forEach((contest) => {
-      if (contest.platform_id === null || contest.platform_id === undefined) return;
-      map.set(contest.platform.toLowerCase(), contest.platform_id);
-    });
-
-    // Fallback during the brief period before masterContests is ready.
-    contests.forEach((contest) => {
-      if (contest.platform_id === null || contest.platform_id === undefined) return;
-      if (!map.has(contest.platform.toLowerCase())) {
-        map.set(contest.platform.toLowerCase(), contest.platform_id);
-      }
-    });
-
+    for (const contest of [...availableContests, ...contests]) {
+      if (contest.platform_id != null) map.set(contest.platform.toLowerCase(), contest.platform_id);
+    }
     return map;
-  }, [masterContests, contests]);
+  }, [availableContests, contests]);
 
-  const activePlatformId = useMemo(() => {
-    if (activePlatform === "all") return null;
-    return platformIdByName.get(activePlatform.toLowerCase()) ?? null;
-  }, [activePlatform, platformIdByName]);
+  const platforms = useMemo(() => {
+    const source = catalogReady ? availableContests : contests.filter(
+      (contest) => getContestStatus(contest) !== "ended",
+    );
+    return ["all", ...Array.from(new Set(source.map((contest) => contest.platform)))
+      .sort((a, b) => a.localeCompare(b))];
+  }, [catalogReady, availableContests, contests]);
 
-  // Card feed query. Upcoming is selected by default, so the very first request is:
-  // ?status_filter=upcoming&skip=0&limit=100
-  // not 100 mixed records filtered afterward.
+  const activePlatformId = activePlatform === "all"
+    ? null
+    : platformIdByName.get(activePlatform.toLowerCase()) ?? null;
+
+  const knownMatchingCount = useMemo(() => {
+    if (!catalogReady || debouncedSearch) return null;
+    return availableContests.filter((contest) =>
+      getContestStatus(contest) === activeTab &&
+      (activePlatform === "all" || contest.platform.toLowerCase() === activePlatform.toLowerCase())
+    ).length;
+  }, [catalogReady, availableContests, activeTab, activePlatform, debouncedSearch]);
+
+  // A filtered server may incorrectly report the unfiltered total. The fully
+  // loaded catalog wins for non-search counts; for search we never exceed the
+  // number of possible records in the chosen status/platform.
+  const matchingTotal = knownMatchingCount ?? feedServerTotal;
+  const canLoadMore = serverHasMore &&
+    (knownMatchingCount === null || contests.length < knownMatchingCount);
+
   useEffect(() => {
     if (!apiUrl) {
       setError("VITE_HACKATHONS_API_URL is not defined");
       setLoading(false);
       return;
     }
-
-    // A platform can only be selected from the populated dropdown, but keep this
-    // guard so an unknown/stale platform can never produce an incorrect request.
     if (activePlatform !== "all" && activePlatformId === null) {
+      setError("Selected platform is missing a platform_id in the API response");
+      setLoading(false);
+      setFeedRefreshing(false);
       return;
     }
 
     const generation = ++feedGenerationRef.current;
     const controller = new AbortController();
-
+    feedControllerRef.current?.abort();
     loadMoreAbortRef.current?.abort();
-    loadMoreAbortRef.current = null;
+    feedControllerRef.current = controller;
     loadingMoreRef.current = false;
     setLoadingMore(false);
-    setFeedHasMore(false);
+    setPageError(null);
+    setFeedRefreshing(true);
+    setError(null);
+    setContests([]);
+    setFeedNextOffset(0);
+    setServerHasMore(false);
+    setFeedServerTotal(0);
 
-    (async () => {
-      try {
-        const page = await fetchHackathonPage(
-          apiUrl,
-          {
-            skip: 0,
-            limit: CARD_PAGE_SIZE,
-            statusFilter: toApiStatusFilter(activeTab),
-            platformId: activePlatformId,
-            q: debouncedSearch || null,
-          },
-          controller.signal,
+    void fetchHackathonPage(apiUrl, {
+      skip: 0,
+      limit: CARD_PAGE_SIZE,
+      statusFilter: toApiStatusFilter(activeTab),
+      platformId: activePlatformId,
+      q: debouncedSearch || null,
+    }, controller.signal)
+      .then((page) => {
+        if (controller.signal.aborted || generation !== feedGenerationRef.current) return;
+        const matching = page.contests.filter((contest) =>
+          getContestStatus(contest) === activeTab &&
+          (activePlatform === "all" || contest.platform.toLowerCase() === activePlatform.toLowerCase())
         );
-
-        if (controller.signal.aborted || generation !== feedGenerationRef.current) {
-          return;
-        }
-
-        setContests(page.contests);
-        setFeedTotal(page.pagination.total);
-        setFeedHasMore(page.pagination.has_more && page.contests.length > 0);
-        setFeedNextOffset(page.pagination.offset + page.contests.length);
+        setContests(mergeUniqueContests([], matching));
+        setFeedServerTotal(page.pagination.total);
+        setFeedNextOffset(page.pagination.offset + page.receivedCount);
+        // Short filtered pages are exhausted even when the server mistakenly
+        // returns global 'has_more' metadata. Other pages fetch on demand.
+        setServerHasMore(page.pagination.has_more && page.receivedCount >= CARD_PAGE_SIZE);
         setError(null);
-
-        // Filter/search changes start the new result set from the top, but appended
-        // pagination pages never reset scroll position.
         window.requestAnimationFrame(() => {
-          cardsScrollRef.current?.scrollTo({ top: 0 });
+          if (generation === feedGenerationRef.current) {
+            cardsScrollRef.current?.scrollTo({ top: 0 });
+          }
         });
-      } catch (err: unknown) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        if (generation !== feedGenerationRef.current) return;
-
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted || generation !== feedGenerationRef.current) return;
         setError(err instanceof Error ? err.message : "Failed to fetch hackathons");
-      } finally {
+      })
+      .finally(() => {
         if (generation === feedGenerationRef.current) {
           setLoading(false);
+          setFeedRefreshing(false);
         }
-      }
-    })();
+      });
 
     return () => controller.abort();
-  }, [
-    apiUrl,
-    activeTab,
-    activePlatform,
-    activePlatformId,
-    debouncedSearch,
-  ]);
+  }, [apiUrl, activeTab, activePlatform, activePlatformId, debouncedSearch]);
 
-  async function loadMoreContests() {
-    if (!apiUrl || !feedHasMore || loadingMoreRef.current) return;
+  async function loadMoreContests(forceRetry = false) {
+    if (!apiUrl || !canLoadMore || loadingMoreRef.current || feedRefreshing || (pageError && !forceRetry)) return;
+    setPageError(null);
     if (activePlatform !== "all" && activePlatformId === null) return;
 
     const generation = feedGenerationRef.current;
     const controller = new AbortController();
-
     loadMoreAbortRef.current?.abort();
     loadMoreAbortRef.current = controller;
     loadingMoreRef.current = true;
     setLoadingMore(true);
 
     try {
-      const page = await fetchHackathonPage(
-        apiUrl,
-        {
-          skip: feedNextOffset,
-          limit: CARD_PAGE_SIZE,
-          statusFilter: toApiStatusFilter(activeTab),
-          platformId: activePlatformId,
-          q: debouncedSearch || null,
-        },
-        controller.signal,
-      );
-
-      if (controller.signal.aborted || generation !== feedGenerationRef.current) {
-        return;
+      const page = await fetchHackathonPage(apiUrl, {
+        skip: feedNextOffset,
+        limit: CARD_PAGE_SIZE,
+        statusFilter: toApiStatusFilter(activeTab),
+        platformId: activePlatformId,
+        q: debouncedSearch || null,
+      }, controller.signal);
+      if (controller.signal.aborted || generation !== feedGenerationRef.current) return;
+      const matching = page.contests.filter((contest) =>
+          getContestStatus(contest) === activeTab &&
+          (activePlatform === "all" || contest.platform.toLowerCase() === activePlatform.toLowerCase())
+        );
+      const nextOffset = page.pagination.offset + page.receivedCount;
+      if (page.receivedCount === 0 || nextOffset <= feedNextOffset) {
+        setServerHasMore(false);
+      } else {
+        setContests((previous) => mergeUniqueContests(previous, matching));
+        setFeedNextOffset(nextOffset);
+        setServerHasMore(page.pagination.has_more && page.receivedCount >= CARD_PAGE_SIZE);
       }
-
-      setContests((previous) => mergeUniqueContests(previous, page.contests));
-      setFeedTotal(page.pagination.total);
-      setFeedHasMore(page.pagination.has_more && page.contests.length > 0);
-
-      const nextOffset = page.pagination.offset + page.contests.length;
-      setFeedNextOffset(nextOffset);
+      setFeedServerTotal(page.pagination.total);
     } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      if (generation !== feedGenerationRef.current) return;
-
-      // A next-page failure must never wipe the already visible cards.
-      console.error("[ContestSection] Failed to load more hackathons:", err);
+      if (controller.signal.aborted || generation !== feedGenerationRef.current) return;
+      console.error("[Hackathons] Next page error:", err);
+      setPageError(err instanceof Error ? err.message : "Failed to load more hackathons");
     } finally {
       if (generation === feedGenerationRef.current) {
         loadingMoreRef.current = false;
         setLoadingMore(false);
       }
-
-      if (loadMoreAbortRef.current === controller) {
-        loadMoreAbortRef.current = null;
-      }
+      if (loadMoreAbortRef.current === controller) loadMoreAbortRef.current = null;
     }
   }
 
   function handleCardsScroll() {
     const element = cardsScrollRef.current;
-
-    if (!element || !feedHasMore || loadingMoreRef.current) return;
-
-    const distanceFromBottom =
-      element.scrollHeight - element.scrollTop - element.clientHeight;
-
-    if (distanceFromBottom <= LOAD_MORE_THRESHOLD_PX) {
+    if (!element || !canLoadMore || loadingMoreRef.current || pageError || feedRefreshing) return;
+    if (element.scrollHeight - element.scrollTop - element.clientHeight <= LOAD_MORE_THRESHOLD_PX) {
       void loadMoreContests();
     }
   }
 
-  // Keep your strict linked-wheel handoff exactly as it was.
+  // If the first page cannot fill an extra-large scroll viewport, fetch the
+  // following page automatically. This never modifies the linked-wheel handler.
+  useEffect(() => {
+    if (loading || feedRefreshing || loadingMore || pageError || !canLoadMore) return;
+    const element = cardsScrollRef.current;
+    if (element && element.scrollHeight <= element.clientHeight + LOAD_MORE_THRESHOLD_PX) {
+      void loadMoreContests();
+    }
+  }, [loading, feedRefreshing, loadingMore, pageError, canLoadMore, contests.length]);
+
+  // Preserve the exact strict linked-wheel handoff algorithm.
   useEffect(() => {
     if (loading || error) return;
-
     const calendarElement = calendarScrollRef.current;
     const cardsElement = cardsScrollRef.current;
-
     if (!calendarElement || !cardsElement) return;
-
-    const handleCalendarWheel = createStrictLinkedWheelHandler(
-      calendarScrollRef,
-      cardsScrollRef,
-    );
-
-    const handleCardsWheel = createStrictLinkedWheelHandler(
-      cardsScrollRef,
-      calendarScrollRef,
-    );
-
-    const wheelOptions: AddEventListenerOptions = {
-      passive: false,
-    };
-
+    const handleCalendarWheel = createStrictLinkedWheelHandler(calendarScrollRef, cardsScrollRef);
+    const handleCardsWheel = createStrictLinkedWheelHandler(cardsScrollRef, calendarScrollRef);
+    const wheelOptions: AddEventListenerOptions = { passive: false };
     calendarElement.addEventListener("wheel", handleCalendarWheel, wheelOptions);
     cardsElement.addEventListener("wheel", handleCardsWheel, wheelOptions);
-
     return () => {
       calendarElement.removeEventListener("wheel", handleCalendarWheel);
       cardsElement.removeEventListener("wheel", handleCardsWheel);
     };
   }, [loading, error, calendarExpanded, contests.length, masterContests.length]);
 
-  // Complete platform list comes from the full catalog, not whichever 100 cards
-  // happen to be visible at the moment.
-  const platforms = useMemo(() => {
-    const source = masterContests.length > 0 ? masterContests : contests;
-
-    return [
-      "all",
-      ...Array.from(new Set(source.map((contest) => contest.platform))).sort((a, b) =>
-        a.localeCompare(b),
-      ),
-    ];
-  }, [masterContests, contests]);
-
-  // Counts are calculated from the complete catalog, so "Upcoming 240" means
-  // exactly 240 overall even while only the first 100 upcoming cards are rendered.
-  // Before the master catalog finishes, the active tab can still use the server's
-  // pagination.total from its card request as an accurate fallback.
-  const counts = useMemo<Record<Tab, number>>(() => {
-    const source = masterContests;
-
-    const result: Record<Tab, number> = {
-      live: 0,
-      upcoming: 0,
-      ended: 0,
-    };
-
-    source.forEach((contest) => {
-      result[getContestStatus(contest)] += 1;
-    });
-
-    if (source.length === 0 && feedTotal > 0) {
-      result[activeTab] = feedTotal;
-    }
-
-    return result;
-  }, [masterContests, feedTotal, activeTab]);
-
-  // Calendar intentionally uses the complete catalog. It is independent from the
-  // card pagination, so record #240 can appear on the calendar even when only
-  // cards 1-100 are currently rendered.
-  const calendarContests = useMemo(() => {
-    return masterContests.length > 0 ? masterContests : contests;
-  }, [masterContests, contests]);
-
   const handleCalendarExpandToggle = () => {
-    if (calendarExpanded) {
-      setFocusedCalendarDate(null);
-    }
-
+    if (calendarExpanded) setFocusedCalendarDate(null);
     setCalendarExpanded((prev) => !prev);
   };
-
   const handleCalendarMonthChange = (nextMonth: Date) => {
     setCalendarMonth(nextMonth);
     setFocusedCalendarDate(null);
   };
-
   const handleShowAllForDay = (dateKey: string, day: Date) => {
     setCalendarExpanded(true);
     setFocusedCalendarDate(dateKey);
@@ -3974,7 +3925,6 @@ export default function ContestSection() {
             scrollbar-width: none;
             -ms-overflow-style: none;
           }
-
           .contest-hidden-scrollbar::-webkit-scrollbar {
             width: 0px;
             height: 0px;
@@ -3982,13 +3932,12 @@ export default function ContestSection() {
           }
         `}
       </style>
-
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-1/2 top-0 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-purple-700/20 blur-[120px]" />
         <div className="absolute bottom-20 right-0 h-[320px] w-[320px] rounded-full bg-[#8C45FF]/10 blur-[120px]" />
       </div>
 
-      <div className="relative z-10 mx-auto max-w-7xl">
+      <div className="relative z-10 mx-auto max-w-7xl 2xl:max-w-[1740px]">
         <div className="mb-8 grid gap-3 md:grid-cols-12 md:items-center">
           <div className="relative w-full md:col-span-8">
             <input
@@ -3999,32 +3948,24 @@ export default function ContestSection() {
               className="h-[46px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm text-white outline-none transition-all duration-200 placeholder:text-white/30 focus:border-purple-500/50 focus:bg-white/[0.06] focus:shadow-[0_0_0_4px_rgba(140,69,255,0.08)]"
             />
           </div>
-
           <div className="md:col-span-2">
             <StatusDropdown
               value={activeTab}
               counts={counts}
-              onChange={(nextTab) => setActiveTab(nextTab)}
+              countsReady={catalogReady}
+              onChange={setActiveTab}
             />
           </div>
-
           <div className="md:col-span-2">
-            <PlatformDropdown
-              value={activePlatform}
-              platforms={platforms}
-              onChange={(nextPlatform) => setActivePlatform(nextPlatform)}
-            />
+            <PlatformDropdown value={activePlatform} platforms={platforms} onChange={setActivePlatform} />
           </div>
         </div>
 
         {loading ? (
           <div className="grid gap-6 lg:grid-cols-3">
             <CalendarSkeleton />
-
             <div className="grid gap-5 sm:grid-cols-2 lg:col-span-2">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <SkeletonCard key={index} />
-              ))}
+              {Array.from({ length: 6 }).map((_, index) => <SkeletonCard key={index} />)}
             </div>
           </div>
         ) : error ? (
@@ -4032,83 +3973,81 @@ export default function ContestSection() {
             {error}
           </div>
         ) : (
-          <div className="grid gap-6 transition-all duration-500 ease-out pb-24 lg:h-[calc(100vh-260px)] lg:min-h-[560px] lg:grid-cols-3 lg:overflow-visible">
-            <aside
-              className={`min-h-0 transition-all duration-500 ease-out ${
-                calendarExpanded ? "lg:col-span-2" : "lg:col-span-1"
-              }`}
-            >
-              <div
-                ref={calendarScrollRef}
-                className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto pr-1"
-              >
-                <ContestCalendar
-                  month={calendarMonth}
-                  contests={calendarContests}
-                  expanded={calendarExpanded}
-                  focusedDateKey={focusedCalendarDate}
-                  onExpandToggle={handleCalendarExpandToggle}
-                  onMonthChange={handleCalendarMonthChange}
-                  onDetails={setSelectedContest}
-                  onShowAllForDay={handleShowAllForDay}
-                />
+          <div className="grid gap-6 pb-24 transition-all duration-500 ease-out lg:h-[calc(100vh-260px)] lg:min-h-[560px] lg:grid-cols-3 lg:overflow-visible 2xl:h-[calc(100vh-230px)] 2xl:min-h-[680px] 2xl:gap-8">
+            <aside className={`min-h-0 transition-all duration-500 ease-out ${calendarExpanded ? "lg:col-span-2" : "lg:col-span-1"}`}>
+              <div ref={calendarScrollRef} className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto pr-1">
+                {catalogReady ? (
+                  <ContestCalendar
+                    month={calendarMonth}
+                    contests={availableContests}
+                    expanded={calendarExpanded}
+                    focusedDateKey={focusedCalendarDate}
+                    onExpandToggle={handleCalendarExpandToggle}
+                    onMonthChange={handleCalendarMonthChange}
+                    onDetails={setSelectedContest}
+                    onShowAllForDay={handleShowAllForDay}
+                  />
+                ) : catalogError ? (
+                  <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5 text-sm text-white/55">
+                    <p>Calendar data couldn't be fully loaded. Totals are temporarily unavailable.</p>
+                    <button type="button" onClick={() => setCatalogReloadKey((v) => v + 1)} className="mt-4 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 py-2 font-semibold text-purple-300">Retry calendar</button>
+                  </div>
+                ) : (
+                  <CalendarSkeleton />
+                )}
               </div>
             </aside>
 
-            <main
-              className={`min-h-0 transition-all duration-500 ease-out ${
-                calendarExpanded ? "lg:col-span-1" : "lg:col-span-2"
-              }`}
-            >
+            <main className={`min-h-0 transition-all duration-500 ease-out ${calendarExpanded ? "lg:col-span-1" : "lg:col-span-2"}`}>
               <div
                 ref={cardsScrollRef}
                 onScroll={handleCardsScroll}
-                aria-busy={loadingMore}
+                aria-busy={loadingMore || feedRefreshing}
                 className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto pr-1"
               >
                 <div className="mb-4 flex items-end justify-between border-b border-white/10 pb-4">
                   <div>
-                    {/* <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-white/45">
-                      Browse hackathon cards, inspect dates in calendar view, and
-                      add events directly to Google Calendar.
-                    </p> */}
-
                     <h3 className="mt-1 text-2xl font-bold text-white">
-                      {activeTab === "upcoming"
-                        ? "Upcoming"
-                        : activeTab === "live"
-                          ? "Live"
-                          : "Ended"}{" "}
-                      <span className="text-purple-500">Hackathons</span>
+                      {activeTab === "upcoming" ? "Upcoming" : "Live"} <span className="text-purple-500">Hackathons</span>
                     </h3>
+                    <p className="mt-2 text-xs text-white/35">
+                      {catalogReady
+                        ? `All ${counts.upcoming + counts.live} · Upcoming ${counts.upcoming} · Live ${counts.live}`
+                        : "Loading complete hackathon counts…"}
+                    </p>
                   </div>
-
                   <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-white/40">
-                    {feedTotal}
+                    {catalogReady && !debouncedSearch ? `${matchingTotal} matching` : `${contests.length} loaded`}
                   </span>
                 </div>
 
-                {contests.length === 0 ? (
+                {feedRefreshing ? (
+                  <div className="py-16 text-center text-sm text-white/40">Loading hackathons…</div>
+                ) : contests.length === 0 ? (
                   <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 px-6 py-20 text-center">
-                    <p className="text-lg font-semibold text-white">
-                      No hackathons found
-                    </p>
-
-                    <p className="mt-2 text-sm text-white/40">
-                      Try changing the status tab, platform filter, or search keyword.
-                    </p>
+                    <p className="text-lg font-semibold text-white">No hackathons found</p>
+                    <p className="mt-2 text-sm text-white/40">Try changing the status, platform, or search keyword.</p>
                   </div>
                 ) : (
-                  <div
-                    className={
-                      calendarExpanded
-                        ? "grid gap-5 pb-1"
-                        : "grid gap-5 pb-1 sm:grid-cols-2"
-                    }
-                  >
-                    {contests.map((contest) => (
-                      <ContestCard key={contest.id} contest={contest} />
-                    ))}
+                  <div className={calendarExpanded ? "grid gap-5 pb-1" : "grid gap-5 pb-1 sm:grid-cols-2 2xl:grid-cols-3"}>
+                    {contests.map((contest) => <ContestCard key={contest.id} contest={contest} />)}
+                  </div>
+                )}
+
+                {!feedRefreshing && (
+                  <div className="mt-5 pb-3 text-center text-xs text-white/35">
+                    Showing {contests.length}{catalogReady && !debouncedSearch ? ` of ${matchingTotal}` : ""} {activeTab} hackathons{debouncedSearch ? " (search results)" : ""}
+                    {loadingMore && <p className="mt-2">Loading more hackathons…</p>}
+                    {pageError && (
+                      <div className="mt-3">
+                        <p className="text-red-400">Couldn't load the next page: {pageError}</p>
+                        <button type="button" onClick={() => void loadMoreContests(true)} className="mt-2 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 py-2 font-semibold text-purple-300">Retry loading hackathons</button>
+                      </div>
+                    )}
+                    {canLoadMore && !pageError && !loadingMore && (
+                      <button type="button" onClick={() => void loadMoreContests()} className="mt-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 font-semibold text-white/55 hover:border-purple-500/30 hover:text-purple-300">Load more</button>
+                    )}
+                    {!canLoadMore && contests.length > 0 && <p className="mt-2 text-white/25">All matching hackathons loaded</p>}
                   </div>
                 )}
               </div>
@@ -4118,18 +4057,11 @@ export default function ContestSection() {
 
         {!loading && !error && (
           <p className="mt-0 text-center text-xs text-white/25">
-            Showing {contests.length}
-            {feedTotal > contests.length ? ` of ${feedTotal}` : ""} hackathon
-            {feedTotal !== 1 ? "s" : ""} · Expand calendar for a larger monthly
-            planning view
+            Showing {contests.length}{catalogReady && !debouncedSearch ? ` of ${matchingTotal}` : ""} {activeTab} hackathons · {catalogReady ? `${availableContests.length} live and upcoming in the full catalogue` : "Calendar catalogue loading"} · Calendar includes all non-ended hackathons
           </p>
         )}
       </div>
-
-      <ContestDetailsModal
-        contest={selectedContest}
-        onClose={() => setSelectedContest(null)}
-      />
+      <ContestDetailsModal contest={selectedContest} onClose={() => setSelectedContest(null)} />
     </section>
   );
 }

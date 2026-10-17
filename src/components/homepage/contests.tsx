@@ -91,6 +91,12 @@ const PLATFORM_META: Record<
     dot: "bg-indigo-400",
     logo: "/icons/hackerearth.png",
   },
+  hackerrank: {
+    label: "HackerRank",
+    badge: "text-green-400",
+    dot: "bg-green-400",
+    logo: "/icons/hackerrank.png",
+  },
   csacademy: {
     label: "CS Academy",
     badge: "text-red-400",
