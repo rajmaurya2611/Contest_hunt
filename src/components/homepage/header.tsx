@@ -27,11 +27,24 @@ const HeaderComponent: React.FC = () => {
             <header className="fixed top-0 left-0 w-full z-50 bg-[#020202] shadow-md">
                 <div className="max-w-7xl mx-auto flex items-center justify-between py-4 px-4 sm:px-8 md:px-12 lg:px-12">
                     {/* Logos */}
-                    <div className="flex items-center space-x-4">
-                        <Link to="/" onClick={() => window.scrollTo(0, 0)}>
-                            <h1 className='text-2xl font-bold font-rubik text-white'>Contest<span className='text-purple-500'>Hunt</span></h1>
-                        </Link>
-                    </div>
+                    {/* Logos */}
+<div className="flex items-center space-x-4">
+    <Link
+        to="/"
+        onClick={() => window.scrollTo(0, 0)}
+        className="flex items-center gap-2"
+    >
+        <img
+            src="/white contest-hunt.png"
+            alt="ContestHunt Logo"
+            className="h-8 w-8 object-contain"
+        />
+
+        <h1 className="text-2xl font-bold font-rubik text-white">
+            Contest<span className="text-purple-500">Hunt</span>
+        </h1>
+    </Link>
+</div>
 
                     {/* Desktop nav */}
                     <nav className="hidden md:flex items-center space-x-4 pr-12">
