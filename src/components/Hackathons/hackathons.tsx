@@ -1757,27 +1757,22 @@ function ContestCard({ contest }: { contest: Contest }) {
 
   const description = cleanDescription(contest.description);
 
-  const modeLabel = formatMode(contest.mode);
+  // Mode is present on every hackathon in the shared API sample.
+  // A venue should only appear when the API actually provides a place,
+  // rather than duplicating "Online" beside the Online mode badge.
+  const modeLabel =
+    formatMode(contest.mode) ??
+    (contest.location?.trim().toLowerCase() === "online" ? "Online" : null);
 
-  const location = contest.location?.trim() || null;
-
+  const rawLocation = contest.location?.trim() || null;
   const locationLabel =
-    location && !(contest.mode?.toLowerCase() === "online" && location.toLowerCase() === "online")
-      ? clampText(location, 52)
-      : null;
+    rawLocation && rawLocation.toLowerCase() !== "online" ? rawLocation : null;
 
+  // These attributes are absent in the supplied 31-item dataset; render them
+  // only if a future API response provides actual values.
   const prizeLabel = formatPrize(contest);
-
   const difficultyLabel = contest.difficulty?.trim() || null;
-
   const visibleTags = getTagList(contest.tags).slice(0, 2);
-
-  const detailItems = [
-    modeLabel,
-    locationLabel ? `Location · ${locationLabel}` : null,
-    prizeLabel ? `Prize · ${prizeLabel}` : null,
-    difficultyLabel ? `Difficulty · ${difficultyLabel}` : null,
-  ].filter((item): item is string => Boolean(item));
 
   const statusText =
 
@@ -1893,47 +1888,65 @@ function ContestCard({ contest }: { contest: Contest }) {
 
 
 
-        {(detailItems.length > 0 || visibleTags.length > 0) && (
-
-          <div className="mt-3 text-[0.7rem] leading-5 text-white/45">
-
-            {detailItems.length > 0 && (
-
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-
-                {detailItems.map((item, index) => (
-
-                  <span key={item} className="inline-flex min-w-0 items-center gap-2">
-
-                    {index > 0 && <span className="text-white/20">•</span>}
-
-                    <span className="max-w-full truncate">{item}</span>
-
-                  </span>
-
-                ))}
-
-              </div>
-
+        {/* Participation details: prominent mode and readable venue, no empty fields. */}
+        {(modeLabel || locationLabel) && (
+          <div className="mt-3 flex min-w-0 items-center gap-2">
+            {modeLabel && (
+              <span
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-purple-500/25 bg-purple-500/[0.09] px-2.5 text-[0.68rem] font-semibold text-purple-200"
+                title={`Mode: ${modeLabel}`}
+              >
+                {modeLabel.toLowerCase() === "online" ? (
+                  <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+                  </svg>
+                ) : (
+                  <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+                    <circle cx="12" cy="10" r="2.5" />
+                  </svg>
+                )}
+                {modeLabel}
+              </span>
             )}
 
-
-
-            {visibleTags.length > 0 && (
-
-              <div className="mt-1 truncate text-white/35">
-
-                Tags · {visibleTags.join(" · ")}
-
-              </div>
-
+            {locationLabel && (
+              <span
+                className="inline-flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.025] px-2.5 text-[0.68rem] font-medium text-white/60"
+                title={rawLocation ?? undefined}
+              >
+                <svg className="h-3.5 w-3.5 shrink-0 text-white/45" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+                  <circle cx="12" cy="10" r="2.5" />
+                </svg>
+                <span className="min-w-0 truncate">{locationLabel}</span>
+              </span>
             )}
-
           </div>
-
         )}
 
-
+        {(prizeLabel || difficultyLabel || visibleTags.length > 0) && (
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+            {prizeLabel && (
+              <span title={`Prize: ${prizeLabel}`} className="inline-flex max-w-full items-center rounded-lg border border-white/[0.08] bg-white/[0.025] px-2 py-1 text-[0.65rem] text-white/60">
+                <span className="mr-1 text-white/35">Prize</span>
+                <span className="min-w-0 truncate">{prizeLabel}</span>
+              </span>
+            )}
+            {difficultyLabel && (
+              <span title={`Difficulty: ${difficultyLabel}`} className="inline-flex max-w-full items-center rounded-lg border border-white/[0.08] bg-white/[0.025] px-2 py-1 text-[0.65rem] text-white/60">
+                <span className="mr-1 text-white/35">Level</span>
+                <span className="min-w-0 truncate">{difficultyLabel}</span>
+              </span>
+            )}
+            {visibleTags.map((tag) => (
+              <span key={tag} title={tag} className="inline-flex max-w-[140px] items-center rounded-lg border border-purple-500/15 bg-purple-500/[0.04] px-2 py-1 text-[0.65rem] text-purple-200/65">
+                <span className="truncate">{tag}</span>
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="mt-auto flex items-center justify-between gap-4 overflow-hidden pt-4 text-xs text-white/55">
 

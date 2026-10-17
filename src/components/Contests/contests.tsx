@@ -246,7 +246,20 @@ const PLATFORM_META: Record<string, PlatformMeta> = {
     pill: "border-green-500/30 bg-green-500/10 text-green-400",
 
   },
-
+  toph: {
+    label: "Toph",
+    text: "text-purple-400",
+    dot: "bg-purple-400",
+    logo: "/icons/toph.png",
+    pill: "border-purple-500/30 bg-purple-500/10 text-purple-400",
+  },
+  yukicoder: {
+    label: "Yukicoder",
+    text: "text-pink-400",
+    dot: "bg-pink-400",
+    logo: "/icons/yukicoder.png",
+    pill: "border-pink-500/30 bg-pink-500/10 text-pink-400"
+  },
   topcoder:{
 
     label: "TopCoder",
@@ -258,20 +271,6 @@ const PLATFORM_META: Record<string, PlatformMeta> = {
     logo: "/icons/topcoder.png",
 
     pill: "border-cyan-500/30 bg-cyan-500/10 text-cyan-400",
-
-  },
-
-  toph:{
-
-    label: "Toph",
-
-    text: "text-purple-400",
-
-    dot: "bg-purple-400",
-
-    logo: "/icons/toph.png",
-
-    pill: "border-purple-500/30 bg-purple-500/10 text-purple-400",
 
   },
 

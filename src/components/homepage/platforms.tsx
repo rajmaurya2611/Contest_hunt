@@ -21,6 +21,11 @@ const platforms: PlatformItem[] = [
     url: "https://codeforces.com",
   },
   {
+    name: "Yukicoder",
+    icon: "/icons/yukicoder.png",
+    url: "https://yukicoder.me",
+  },
+  {
     name: "LeetCode",
     icon: "/icons/leetcode.png",
     url: "https://leetcode.com",
@@ -59,6 +64,11 @@ const platforms: PlatformItem[] = [
     name: "Now Coder",
     icon: "/icons/nowcoder.png",
     url: "https://www.nowcoder.com"
+  },
+  {
+    name: "Toph",
+    icon: "/icons/toph.png",
+    url: "https://toph.co"
   },
   {
     name:"Replit",
