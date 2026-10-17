@@ -22,7 +22,6 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ApiContestStatus = "ongoing" | "upcoming" | "ended";
 type ApiStatusFilter = "active" | "upcoming" | "past";
 
 type RawContest = {
