@@ -4,6 +4,7 @@ import Homepage from './pages/homepage';  // Adjust the path as necessary
 import ContestSection from './pages/contests';
 import HackathonSection from './pages/hackathons';
 import BugBountySection from './pages/bugbounty';
+import { Analytics } from "@vercel/analytics/react";
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
       <Route path="/hackathons" element={<HackathonSection />} />
       <Route path="/bug-bounties" element={<BugBountySection />} />
       </Routes>
+      <Analytics />
     </Router>
   );
 }
