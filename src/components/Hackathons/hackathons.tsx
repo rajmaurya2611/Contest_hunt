@@ -3977,7 +3977,7 @@ export default function ContestSection() {
         {loading ? (
           <div className="grid gap-6 lg:grid-cols-3">
             <CalendarSkeleton />
-            <div className="grid gap-5 sm:grid-cols-2 lg:col-span-2">
+            <div className="grid gap-5 sm:grid-cols-2 lg:col-span-2 2xl:grid-cols-3">
               {Array.from({ length: 6 }).map((_, index) => <SkeletonCard key={index} />)}
             </div>
           </div>

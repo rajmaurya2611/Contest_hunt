@@ -3787,7 +3787,7 @@ export default function ContestSection() {
 
 
 
-            <div className="grid gap-5 sm:grid-cols-2 lg:col-span-2 2xl:gap-6">
+            <div className="grid gap-5 sm:grid-cols-2 lg:col-span-2 2xl:grid-cols-3 2xl:gap-6">
 
               {Array.from({ length: 6 }).map((_, index) => (
 
@@ -3809,15 +3809,15 @@ export default function ContestSection() {
 
         ) : (
 
-          <div className="grid gap-6 transition-all duration-500 ease-out pb-24 lg:h-[calc(100vh-260px)] lg:min-h-[560px] lg:grid-cols-3 lg:overflow-visible 2xl:h-[calc(100dvh-240px)] 2xl:min-h-[680px] 2xl:grid-cols-5 2xl:gap-8 min-[2200px]:grid-cols-6">
+          <div className="grid gap-6 transition-all duration-500 ease-out pb-24 lg:h-[calc(100vh-260px)] lg:min-h-[560px] lg:grid-cols-3 lg:overflow-visible 2xl:h-[calc(100dvh-240px)] 2xl:min-h-[680px] 2xl:grid-cols-3 2xl:gap-8 min-[2200px]:grid-cols-6">
 
             <aside
 
               className={`min-h-0 transition-all duration-500 ease-out ${
 
                 calendarExpanded
-                  ? "lg:col-span-2 2xl:col-span-3 min-[2200px]:col-span-3"
-                  : "lg:col-span-1 2xl:col-span-2 min-[2200px]:col-span-2"
+                  ? "lg:col-span-2 2xl:col-span-2 min-[2200px]:col-span-3"
+                  : "lg:col-span-1 2xl:col-span-1 min-[2200px]:col-span-2"
 
               }`}
 
@@ -3871,8 +3871,8 @@ export default function ContestSection() {
               className={`min-h-0 transition-all duration-500 ease-out ${
 
                 calendarExpanded
-                  ? "lg:col-span-1 2xl:col-span-2 min-[2200px]:col-span-3"
-                  : "lg:col-span-2 2xl:col-span-3 min-[2200px]:col-span-4"
+                  ? "lg:col-span-1 2xl:col-span-1 min-[2200px]:col-span-3"
+                  : "lg:col-span-2 2xl:col-span-2 min-[2200px]:col-span-4"
 
               }`}
 
@@ -3921,7 +3921,7 @@ export default function ContestSection() {
 
 
                 {feedLoading ? (
-                  <div className={calendarExpanded ? "grid gap-5" : "grid gap-5 sm:grid-cols-2"}>
+                  <div className={calendarExpanded ? "grid gap-5 2xl:grid-cols-1 min-[2200px]:grid-cols-2" : "grid gap-5 sm:grid-cols-2 2xl:grid-cols-3"}>
                     {Array.from({ length: 4 }).map((_, index) => (
                       <SkeletonCard key={index} />
                     ))}
@@ -3956,7 +3956,7 @@ export default function ContestSection() {
 
                         ? "grid w-full gap-5 pb-1 2xl:grid-cols-1 2xl:gap-6 min-[2200px]:grid-cols-2"
 
-                        : "grid w-full gap-5 pb-1 sm:grid-cols-2 2xl:grid-cols-2 2xl:gap-6 min-[2200px]:grid-cols-3"
+                        : "grid w-full gap-5 pb-1 sm:grid-cols-2 2xl:grid-cols-3 2xl:gap-6 min-[2200px]:grid-cols-3"
 
                     }
 
