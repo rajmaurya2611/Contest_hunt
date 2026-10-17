@@ -22,7 +22,7 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ApiStatusFilter = "active" | "upcoming" | "past";
+type ApiStatusFilter = "active" | "upcoming";
 
 type RawContest = {
   id?: unknown;
@@ -94,10 +94,18 @@ type ContestPagination = {
 type ContestPage = {
   contests: Contest[];
   pagination: ContestPagination;
+  // Raw rows, before filtering malformed records. Offset pagination must
+  // advance by the number returned from the API, not only valid UI cards.
+  rawCount: number;
+};
+
+type CompleteCatalog = {
+  contests: Contest[];
+  total: number;
 };
 
 type Status = "live" | "upcoming" | "ended";
-type Tab = Status;
+type Tab = Exclude<Status, "ended">;
 
 type PlatformMeta = {
   label: string;
@@ -297,12 +305,13 @@ function getPlatform(platform: string): PlatformMeta {
 
 // ─── API Helpers ──────────────────────────────────────────────────────────────
 
-const CARD_PAGE_SIZE = 100;
+const CARD_PAGE_SIZE = 20;
 const MASTER_PAGE_SIZE = 1000;
 const SEARCH_DEBOUNCE_MS = 350;
 const LOAD_MORE_THRESHOLD_PX = 500;
 
 function toFiniteNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -336,7 +345,6 @@ function mapApiStatusToUiStatus(
 
 function toApiStatusFilter(status: Tab): ApiStatusFilter {
   if (status === "live") return "active";
-  if (status === "ended") return "past";
   return "upcoming";
 }
 
@@ -355,15 +363,15 @@ function normalizeTags(value: unknown): string[] {
   return [];
 }
 
-function normalizeApiContest(raw: RawContest, index: number): Contest | null {
+function normalizeApiContest(raw: RawContest): Contest | null {
   const startTime = toFiniteNumber(raw.start_time);
   const endTime = toFiniteNumber(raw.end_time);
-  const id = toFiniteNumber(raw.id) ?? index;
+  const id = toFiniteNumber(raw.id);
   const name = toOptionalString(raw.name);
   const url = toOptionalString(raw.url);
   const platform = toOptionalString(raw.platform_name) ?? "Unknown";
 
-  if (!name || !url || startTime === null || endTime === null) {
+  if (id === null || !Number.isInteger(id) || !name || !url || startTime === null || endTime === null) {
     return null;
   }
 
@@ -413,9 +421,9 @@ function normalizeContestResponse(payload: unknown): Contest[] {
   }
 
   return rows
-    .map((row, index) =>
+    .map((row) =>
       row && typeof row === "object"
-        ? normalizeApiContest(row as RawContest, index)
+        ? normalizeApiContest(row as RawContest)
         : null,
     )
     .filter((contest): contest is Contest => contest !== null);
@@ -477,41 +485,39 @@ function getApiErrorMessage(payload: unknown, fallback: string) {
 
 function normalizePagination(
   payload: unknown,
-  contests: Contest[],
   requestedSkip: number,
-  requestedLimit: number,
 ): ContestPagination {
-  const record =
-    payload && typeof payload === "object"
-      ? (payload as { pagination?: unknown })
-      : null;
+  // A fabricated fallback total gives misleading counts. The endpoint
+  // promises pagination metadata, so require it for accurate UI numbers.
+  const record = payload && typeof payload === "object"
+    ? (payload as { pagination?: unknown })
+    : null;
+  const pagination = record?.pagination;
+  if (!pagination || typeof pagination !== "object") {
+    throw new Error("Contest API response is missing pagination metadata");
+  }
 
-  const pagination =
-    record?.pagination && typeof record.pagination === "object"
-      ? (record.pagination as {
-          total?: unknown;
-          limit?: unknown;
-          offset?: unknown;
-          has_more?: unknown;
-        })
-      : null;
-
-  const total = toFiniteNumber(pagination?.total) ?? contests.length;
-  const limit = toFiniteNumber(pagination?.limit) ?? requestedLimit;
-  const offset = toFiniteNumber(pagination?.offset) ?? requestedSkip;
-
-  const inferredHasMore = offset + contests.length < total;
-  const hasMore =
-    typeof pagination?.has_more === "boolean"
-      ? pagination.has_more
-      : inferredHasMore;
-
-  return {
-    total,
-    limit,
-    offset,
-    has_more: hasMore,
+  const value = pagination as {
+    total?: unknown;
+    limit?: unknown;
+    offset?: unknown;
+    has_more?: unknown;
   };
+  const total = toFiniteNumber(value.total);
+  const limit = toFiniteNumber(value.limit);
+  const offset = toFiniteNumber(value.offset);
+  if (
+    total === null || !Number.isInteger(total) || total < 0 ||
+    limit === null || !Number.isInteger(limit) || limit < 1 ||
+    offset === null || !Number.isInteger(offset) || offset < 0 ||
+    typeof value.has_more !== "boolean"
+  ) {
+    throw new Error("Contest API returned invalid pagination metadata");
+  }
+  if (offset !== requestedSkip) {
+    throw new Error(`Contest API offset mismatch (requested ${requestedSkip}, received ${offset})`);
+  }
+  return { total, limit, offset, has_more: value.has_more };
 }
 
 async function fetchContestPage(
@@ -546,52 +552,57 @@ async function fetchContestPage(
   }
 
   const contests = normalizeContestResponse(payload);
-  const pagination = normalizePagination(
-    payload,
-    contests,
-    query.skip,
-    query.limit,
-  );
+  const rawData = payload && typeof payload === "object"
+    ? (payload as { data?: unknown }).data
+    : null;
+  const rawCount = Array.isArray(rawData) ? rawData.length : 0;
+  const pagination = normalizePagination(payload, query.skip);
 
-  return {
-    contests,
-    pagination,
-  };
+  if (pagination.has_more && rawCount === 0) {
+    throw new Error("Contest API reported more pages but returned zero records");
+  }
+  return { contests, pagination, rawCount };
 }
 
 async function fetchCompleteContestCatalog(
   baseUrl: string,
   signal?: AbortSignal,
-) {
+): Promise<CompleteCatalog> {
+  // The endpoint has no month/date-range filter. To populate a calendar for
+  // every month, we must retrieve *all* pages without status/platform filters.
+  // Page size 1000 is the backend's documented maximum.
   let skip = 0;
+  let expectedTotal: number | null = null;
   let allContests: Contest[] = [];
 
   while (true) {
     const page = await fetchContestPage(
       baseUrl,
-      {
-        skip,
-        limit: MASTER_PAGE_SIZE,
-      },
+      { skip, limit: MASTER_PAGE_SIZE },
       signal,
     );
-
+    if (expectedTotal !== null && expectedTotal !== page.pagination.total) {
+      throw new Error("Contest catalogue changed during pagination; reload required");
+    }
+    expectedTotal = page.pagination.total;
     allContests = mergeUniqueContests(allContests, page.contests);
 
-    if (!page.pagination.has_more || page.contests.length === 0) {
-      break;
-    }
-
-    const nextSkip = page.pagination.offset + page.contests.length;
-
+    if (!page.pagination.has_more) break;
+    const nextSkip = page.pagination.offset + page.rawCount;
     if (nextSkip <= skip) {
-      break;
+      throw new Error("Contest catalogue pagination made no progress");
     }
-
     skip = nextSkip;
   }
 
-  return allContests;
+  // Counts must not be presented as exact if malformed/duplicate rows were
+  // dropped or the collection changed during an offset-paginated scan.
+  if (allContests.length !== (expectedTotal ?? 0)) {
+    throw new Error(
+      `Incomplete contest catalogue (${allContests.length} unique of ${expectedTotal ?? 0} API records)`,
+    );
+  }
+  return { contests: allContests, total: expectedTotal ?? 0 };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -944,7 +955,7 @@ function getGoogleCalendarUrl(contest: Contest) {
 
   const details = encodeURIComponent(
 
-    `${contest.description || "Coding contest"}\n\nContest Link: ${contest.url}`,
+    `${clampText(cleanContestDescription(contest.description) || "Coding contest", 800)}\n\nContest Link: ${contest.url}`,
 
   );
 
@@ -1617,136 +1628,150 @@ function ShareIcon() {
 
 
 // ─── Contest Card ─────────────────────────────────────────────────────────────
+// Homepage-inspired information hierarchy. The existing card interaction,
+// status colours, buttons and hover treatment are intentionally retained.
 
+function ContestVisual({ contest, meta }: { contest: Contest; meta: PlatformMeta }) {
+  const [bannerError, setBannerError] = useState(false);
 
+  if (contest.banner && !bannerError) {
+    return (
+      <div className="h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
+        <img
+          src={contest.banner}
+          alt={`${contest.name} banner`}
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          onError={() => setBannerError(true)}
+        />
+      </div>
+    );
+  }
+
+  return <PlatformLogo src={meta.logo} alt={meta.label} dotClass={meta.dot} />;
+}
+
+function getContestExtras(contest: Contest): string[] {
+  const mode = formatMode(contest.mode);
+  const location = contest.location?.trim();
+  const prize = formatPrize(contest);
+  const difficulty = contest.difficulty?.trim();
+  const category = contest.category_name?.trim();
+
+  return [
+    category && category.toLowerCase() !== "contests" ? category : null,
+    mode ? `Mode: ${mode}` : null,
+    location && location.toLowerCase() !== "online"
+      ? `Location: ${location}`
+      : null,
+    prize ? `Prize: ${prize}` : null,
+    difficulty ? `Difficulty: ${difficulty}` : null,
+    ...(contest.tags ?? []).slice(0, 2),
+  ].filter((value): value is string => Boolean(value));
+}
 
 function ContestCard({ contest }: { contest: Contest }) {
   const meta = getPlatform(contest.platform);
   const status = contest.status;
   const styles = STATUS_STYLES[status];
   const googleCalendarUrl = getGoogleCalendarUrl(contest);
-
-  const description = cleanContestDescription(contest.description);
-  const modeLabel = formatMode(contest.mode);
-  const locationLabel = contest.location?.trim() || null;
-  const prizeLabel = formatPrize(contest);
-  const difficultyLabel = contest.difficulty?.trim() || null;
-  const visibleTags = (contest.tags || []).slice(0, 2);
-
-  const detailItems = [
-    modeLabel,
-    locationLabel && locationLabel.toLowerCase() !== "online"
-      ? `Location · ${clampText(locationLabel, 48)}`
-      : null,
-    prizeLabel ? `Prize · ${prizeLabel}` : null,
-    difficultyLabel ? `Difficulty · ${difficultyLabel}` : null,
-  ].filter((item): item is string => Boolean(item));
-
+  const description = cleanContestDescription(contest.description) || "Coding contest";
+  const extras = getContestExtras(contest);
   const timingLabel =
     status === "live"
-      ? timeLeft(contest.end_time)
+      ? `Ends · ${timeLeft(contest.end_time)}`
       : status === "upcoming"
-        ? timeUntil(contest.start_time)
-        : "Completed";
+        ? `Starts · ${timeUntil(contest.start_time)}`
+        : "Contest completed";
 
   return (
-    <article className="group relative min-h-[210px] rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-5 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]">
+    <article className="group relative flex h-full min-h-[340px] min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-5 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)] 2xl:p-6">
       <div
         className={`absolute inset-x-0 top-0 h-px rounded-t-2xl bg-gradient-to-r ${styles.borderTop}`}
       />
 
-      <div className="flex items-start gap-4">
-        <PlatformLogo src={meta.logo} alt={meta.label} dotClass={meta.dot} />
-
-        <div className="min-w-0 flex-1">
-          <div className="mb-3 flex items-start justify-between gap-3">
+      {/* Logo + platform and status, as on the homepage card. */}
+      <div className="flex min-w-0 shrink-0 items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <ContestVisual contest={contest} meta={meta} />
+          <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
-              <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
-              <span
-                className={`truncate text-[0.72rem] font-semibold uppercase tracking-[0.15em] ${meta.text}`}
-              >
+              <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
+              <span className={`truncate text-[0.7rem] font-semibold uppercase tracking-[0.13em] ${meta.text}`}>
                 {meta.label}
               </span>
             </div>
-
-            <span
-              className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1 text-[0.65rem] font-bold uppercase tracking-widest ${styles.badge}`}
-            >
-              <span className={`h-1.5 w-1.5 rounded-full ${styles.dot}`} />
-              {status}
-            </span>
-          </div>
-
-          <h3 className="line-clamp-2 text-[0.98rem] font-semibold leading-6 text-white transition-colors duration-200 group-hover:text-purple-300">
-            {contest.name}
-          </h3>
-
-          {description && (
-            <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/40">
-              {clampText(description)}
+            <p className="mt-1 truncate text-[0.66rem] text-white/35" title={timingLabel}>
+              {timingLabel}
             </p>
-          )}
+          </div>
+        </div>
+        <span
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.64rem] font-bold uppercase tracking-wider ${styles.badge}`}
+        >
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${styles.dot}`} />
+          {status}
+        </span>
+      </div>
+
+      {/* Reserve exactly two title lines, even for a short contest name. */}
+      <h3
+        title={contest.name}
+        className="mt-4 h-12 min-h-12 shrink-0 overflow-hidden line-clamp-2 text-[1rem] font-semibold leading-6 text-white transition-colors duration-200 group-hover:text-purple-300"
+      >
+        {contest.name}
+      </h3>
+
+      {/* Primary data from the API, no empty fields or decorative placeholders. */}
+      <div className="mt-3 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3.5 py-3">
+        <div className="min-w-0">
+          <p className="text-[0.64rem] font-semibold uppercase tracking-wider text-white/35">Starts</p>
+          <p className="mt-1 truncate text-[0.75rem] font-medium text-white/75" title={formatDateTime(contest.start_time)}>
+            {formatDateTime(contest.start_time)}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <div className="h-9 w-px bg-white/10" />
+          <div>
+            <p className="text-[0.64rem] font-semibold uppercase tracking-wider text-white/35">Duration</p>
+            <p className="mt-1 whitespace-nowrap text-[0.75rem] font-medium text-white/75">
+              {formatDuration(contest.duration)}
+            </p>
+          </div>
         </div>
       </div>
 
-      {(detailItems.length > 0 || visibleTags.length > 0) && (
-        <div className="mt-4 text-[0.7rem] leading-5 text-white/45">
-          {detailItems.length > 0 && (
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              {detailItems.map((item, index) => (
-                <span key={item} className="inline-flex min-w-0 items-center gap-2">
-                  {index > 0 && <span className="text-white/20">•</span>}
-                  <span className="max-w-full truncate">{item}</span>
-                </span>
-              ))}
-            </div>
-          )}
+      {/* The description is ALWAYS two lines high; nothing is reserved below it. */}
+      <p
+        title={description}
+        className="mt-3 h-10 min-h-10 shrink-0 overflow-hidden line-clamp-2 text-xs leading-5 text-white/45"
+      >
+        {description}
+      </p>
 
-          {visibleTags.length > 0 && (
-            <div className="mt-1 truncate text-white/35">
-              Tags · {visibleTags.join(" · ")}
-            </div>
-          )}
+      {/* Show optional API fields only if present. Never create an empty row. */}
+      {extras.length > 0 && (
+        <div className="mt-2 flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[0.65rem] text-white/40">
+          {extras.slice(0, 3).map((extra, index) => (
+            <span key={`${index}-${extra}`} className="inline-flex min-w-0 items-center gap-1.5">
+              {index > 0 && <span className="shrink-0 text-white/20">·</span>}
+              <span className="truncate" title={extra}>{extra}</span>
+            </span>
+          ))}
         </div>
       )}
 
-      <div className="mt-6 space-y-3 border-t border-white/10 pt-4 text-xs text-white/50">
-        <div className="flex items-center justify-between gap-4">
-          <span className="text-white/35">Starts</span>
-          <span className="min-w-0 truncate text-right text-white/60">
-            {formatDateTime(contest.start_time)}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <span className="text-white/35">Duration</span>
-          <span className="text-white/60">{formatDuration(contest.duration)}</span>
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <span className="text-white/35">
-            {status === "live"
-              ? "Ends"
-              : status === "upcoming"
-                ? "Timeline"
-                : "Status"}
-          </span>
-          <span className={`font-semibold ${styles.text}`}>{timingLabel}</span>
-        </div>
-      </div>
-
-      <div className="mt-5 flex items-center justify-between gap-3">
+      {/* Same actions and behaviour, aligned at bottom of equal-height grid cards. */}
+      <div className="mt-auto flex min-w-0 shrink-0 items-center justify-between gap-3 border-t border-white/[0.08] pt-3">
         <a
           href={googleCalendarUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-purple-500/30 bg-purple-500/10 px-4 py-2.5 text-center text-[0.72rem] font-semibold text-purple-300 no-underline transition-all duration-200 hover:bg-purple-500/15 sm:text-xs"
+          className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-2xl border border-purple-500/30 bg-purple-500/10 px-3 py-2.5 text-center text-[0.72rem] font-semibold text-purple-300 no-underline transition-all duration-200 hover:bg-purple-500/15 sm:px-4 sm:text-xs"
         >
           <CalendarPlusIcon />
-          <span>Add Calendar</span>
+          <span className="truncate">Add Calendar</span>
         </a>
-
-        <div className="ml-auto flex items-center justify-end gap-4">
+        <div className="ml-auto flex shrink-0 items-center justify-end gap-4">
           <a
             href={contest.url}
             target="_blank"
@@ -1757,7 +1782,6 @@ function ContestCard({ contest }: { contest: Contest }) {
           >
             <ExternalLinkIcon />
           </a>
-
           <button
             type="button"
             onClick={() => shareContest(contest)}
@@ -1772,8 +1796,6 @@ function ContestCard({ contest }: { contest: Contest }) {
     </article>
   );
 }
-
-
 
 // ─── Calendar Pill ────────────────────────────────────────────────────────────
 
@@ -1922,6 +1944,10 @@ function ContestCalendar({
 }) {
 
   const days = useMemo(() => getCalendarDays(month), [month]);
+  const monthStarts = useMemo(
+    () => contests.filter((contest) => isSameMonth(new Date(contest.start_time * 1000), month)).length,
+    [contests, month],
+  );
 
 
 
@@ -2088,6 +2114,9 @@ function ContestCalendar({
               {getMonthLabel(month)}
 
             </h3>
+            <p className="mt-1 text-[0.65rem] text-white/35">
+              {monthStarts} starting this month · {contests.length} in all months
+            </p>
 
           </div>
 
@@ -2378,360 +2407,198 @@ function ContestCalendar({
 
 
 // ─── Details Modal ────────────────────────────────────────────────────────────
-
-
+// The card stays concise; the modal exposes all useful non-null API metadata.
 
 function ContestDetailsModal({
-
   contest,
-
   onClose,
-
 }: {
-
   contest: Contest | null;
-
   onClose: () => void;
-
 }) {
-
   if (!contest) return null;
 
-
-
   const meta = getPlatform(contest.platform);
-
   const status = contest.status;
-
   const styles = STATUS_STYLES[status];
-
   const googleCalendarUrl = getGoogleCalendarUrl(contest);
-
-
-
+  const description = cleanContestDescription(contest.description);
+  const prize = formatPrize(contest);
   const timingLabel =
-
     status === "live"
-
       ? timeLeft(contest.end_time)
-
       : status === "upcoming"
-
         ? timeUntil(contest.start_time)
-
         : "Completed";
 
-
+  const metadata = [
+    { label: "Category", value: contest.category_name },
+    { label: "Mode", value: formatMode(contest.mode) },
+    { label: "Location", value: contest.location },
+    { label: "Difficulty", value: contest.difficulty },
+    { label: "Prize", value: prize },
+  ].filter((item): item is { label: string; value: string } => Boolean(item.value?.trim()));
 
   return (
-
     <div
-
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
-
       onClick={onClose}
-
+      role="presentation"
     >
-
       <div
-
-        className="relative w-full max-w-xl rounded-[28px] border border-white/10 bg-[#050505] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.6)]"
-
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Contest details: ${contest.name}`}
+        className="contest-hidden-scrollbar relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-[28px] border border-white/10 bg-[#050505] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.6)]"
         onClick={(event) => event.stopPropagation()}
-
       >
-
-        <div
-
-          className={`absolute inset-x-0 top-0 h-px rounded-t-[28px] bg-gradient-to-r ${styles.borderTop}`}
-
-        />
-
-
-
+        <div className={`absolute inset-x-0 top-0 h-px rounded-t-[28px] bg-gradient-to-r ${styles.borderTop}`} />
         <button
-
           type="button"
-
           onClick={onClose}
-
           className="absolute right-5 top-5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white/45 transition hover:bg-white/[0.08] hover:text-white"
-
         >
-
           Close
-
         </button>
 
-
-
         <div className="pr-20">
-
           <div className="mb-4 flex items-center gap-3">
-
-            <PlatformLogo src={meta.logo} alt={meta.label} dotClass={meta.dot} />
-
-
-
+            <ContestVisual contest={contest} meta={meta} />
             <div>
-
-              <p
-
-                className={`text-[0.7rem] font-semibold uppercase tracking-[0.18em] ${meta.text}`}
-
-              >
-
+              <p className={`text-[0.7rem] font-semibold uppercase tracking-[0.18em] ${meta.text}`}>
                 {meta.label}
-
               </p>
-
-
-
-              <span
-
-                className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-widest ${styles.badge}`}
-
-              >
-
+              <span className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-widest ${styles.badge}`}>
                 <span className={`h-1.5 w-1.5 rounded-full ${styles.dot}`} />
-
                 {status}
-
               </span>
-
             </div>
-
           </div>
-
-
-
-          <h3 className="text-2xl font-bold leading-snug text-white">
-
-            {contest.name}
-
-          </h3>
-
+          <h3 className="text-2xl font-bold leading-snug text-white">{contest.name}</h3>
         </div>
 
-
-
-        {contest.description && (
-
-          <p className="mt-4 line-clamp-4 text-sm leading-6 text-white/45">
-
-            {contest.description}
-
+        {description && (
+          <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-6 text-white/45">
+            {description}
           </p>
-
         )}
 
-
-
         <div className="mt-6 grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm">
-
           <div className="flex justify-between gap-4">
-
             <span className="text-white/35">Starts</span>
-
-            <span className="text-right font-medium text-white/70">
-
-              {formatDateTime(contest.start_time)}
-
-            </span>
-
+            <span className="text-right font-medium text-white/70">{formatDateTime(contest.start_time)}</span>
           </div>
-
-
-
           <div className="flex justify-between gap-4">
-
             <span className="text-white/35">Ends</span>
-
-            <span className="text-right font-medium text-white/70">
-
-              {formatDateTime(contest.end_time)}
-
-            </span>
-
+            <span className="text-right font-medium text-white/70">{formatDateTime(contest.end_time)}</span>
           </div>
-
-
-
           <div className="flex justify-between gap-4">
-
             <span className="text-white/35">Duration</span>
-
-            <span className="font-medium text-white/70">
-
-              {formatDuration(contest.duration)}
-
-            </span>
-
+            <span className="font-medium text-white/70">{formatDuration(contest.duration)}</span>
           </div>
-
-
-
           <div className="flex justify-between gap-4">
-
             <span className="text-white/35">
-
-              {status === "live"
-
-                ? "Ends In"
-
-                : status === "upcoming"
-
-                  ? "Timeline"
-
-                  : "Status"}
-
+              {status === "live" ? "Ends In" : status === "upcoming" ? "Timeline" : "Status"}
             </span>
-
-            <span className={`text-right font-semibold ${styles.text}`}>
-
-              {timingLabel}
-
-            </span>
-
+            <span className={`text-right font-semibold ${styles.text}`}>{timingLabel}</span>
           </div>
-
+          {metadata.map(({ label, value }) => (
+            <div key={label} className="flex justify-between gap-4">
+              <span className="shrink-0 text-white/35">{label}</span>
+              <span className="min-w-0 break-words text-right font-medium text-white/70">{value}</span>
+            </div>
+          ))}
+          {!!contest.tags?.length && (
+            <div className="flex justify-between gap-4">
+              <span className="shrink-0 text-white/35">Tags</span>
+              <span className="min-w-0 break-words text-right font-medium text-white/70">
+                {contest.tags.join(" · ")}
+              </span>
+            </div>
+          )}
         </div>
 
-
+        {contest.updated_at && (
+          <p className="mt-3 text-right text-[0.65rem] text-white/25">
+            Updated {new Date(contest.updated_at).toLocaleDateString("en-IN", {
+              day: "2-digit", month: "short", year: "numeric",
+            })}
+          </p>
+        )}
 
         <div className="mt-6 flex items-center justify-between gap-3">
-
           <a
-
             href={googleCalendarUrl}
-
             target="_blank"
-
             rel="noopener noreferrer"
-
             className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-purple-500/30 bg-purple-500/10 px-4 py-2.5 text-center text-[0.72rem] font-semibold text-purple-300 no-underline transition-all duration-200 hover:bg-purple-500/15 sm:text-xs"
-
           >
-
             <CalendarPlusIcon />
-
             <span>Add Calendar</span>
-
           </a>
-
-
-
           <div className="ml-auto flex items-center justify-end gap-4">
-
             <a
-
               href={contest.url}
-
               target="_blank"
-
               rel="noopener noreferrer"
-
               aria-label="Visit contest"
-
               title="Visit contest"
-
               className="inline-flex items-center justify-center text-white/45 no-underline transition-all duration-200 hover:scale-110 hover:text-purple-300"
-
             >
-
               <ExternalLinkIcon />
-
             </a>
-
-
-
             <button
-
               type="button"
-
               onClick={() => shareContest(contest)}
-
               aria-label="Share contest"
-
               title="Share contest"
-
               className="inline-flex items-center justify-center text-white/45 transition-all duration-200 hover:scale-110 hover:text-purple-300"
-
             >
-
               <ShareIcon />
-
             </button>
-
           </div>
-
         </div>
-
       </div>
-
     </div>
-
   );
-
 }
-
-
 
 // ─── Skeletons ────────────────────────────────────────────────────────────────
 
 
 
 function SkeletonCard() {
-
   return (
-
-    <div className="min-h-[210px] rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-5">
-
-      <div className="flex items-start gap-4">
-
-        <div className="h-12 w-12 animate-pulse rounded-2xl bg-white/10" />
-
-
-
-        <div className="flex-1">
-
-          <div className="flex items-start justify-between gap-3">
-
-            <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
-
-            <div className="h-7 w-20 animate-pulse rounded-full bg-white/10" />
-
+    <div className="min-h-[340px] rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-5 2xl:p-6">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="h-12 w-12 shrink-0 animate-pulse rounded-2xl bg-white/10" />
+          <div className="space-y-2">
+            <div className="h-3 w-20 animate-pulse rounded bg-white/10" />
+            <div className="h-2 w-24 animate-pulse rounded bg-white/10" />
           </div>
-
-
-
-          <div className="mt-4 h-4 w-4/5 animate-pulse rounded bg-white/10" />
-
-          <div className="mt-2 h-4 w-3/5 animate-pulse rounded bg-white/10" />
-
         </div>
-
+        <div className="h-6 w-16 animate-pulse rounded-full bg-white/10" />
       </div>
-
-
-
-      <div className="mt-6 space-y-3 border-t border-white/10 pt-4">
-
+      <div className="mt-4 space-y-2">
+        <div className="h-4 w-4/5 animate-pulse rounded bg-white/10" />
+        <div className="h-4 w-3/5 animate-pulse rounded bg-white/10" />
+      </div>
+      <div className="mt-4 h-[68px] w-full animate-pulse rounded-xl bg-white/[0.06]" />
+      <div className="mt-3 space-y-2">
         <div className="h-3 w-full animate-pulse rounded bg-white/10" />
-
         <div className="h-3 w-4/5 animate-pulse rounded bg-white/10" />
-
-        <div className="h-3 w-3/5 animate-pulse rounded bg-white/10" />
-
       </div>
-
+      <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-3">
+        <div className="h-9 w-32 animate-pulse rounded-xl bg-white/10" />
+        <div className="flex gap-3">
+          <div className="h-6 w-6 animate-pulse rounded bg-white/10" />
+          <div className="h-6 w-6 animate-pulse rounded bg-white/10" />
+        </div>
+      </div>
     </div>
-
   );
-
 }
-
-
 
 function CalendarSkeleton() {
 
@@ -2861,7 +2728,7 @@ function StatusDropdown({
 
   value: Tab;
 
-  counts: Record<Tab, number>;
+  counts: Record<Tab, number | null>;
 
   onChange: (value: Tab) => void;
 
@@ -2969,16 +2836,6 @@ function StatusDropdown({
 
     },
 
-    ended: {
-
-      label: "Ended",
-
-      dot: "bg-white/30",
-
-      active: "text-white/40",
-
-    },
-
   };
 
 
@@ -3009,7 +2866,7 @@ function StatusDropdown({
 
           <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/40">
 
-            {counts[value]}
+            {counts[value] ?? "—"}
 
           </span>
 
@@ -3075,7 +2932,7 @@ function StatusDropdown({
 
                 <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/40">
 
-                  {counts[option]}
+                  {counts[option] ?? "—"}
 
                 </span>
 
@@ -3364,15 +3221,21 @@ function PlatformDropdown({
 export default function ContestSection() {
   const apiUrl = import.meta.env.VITE_CONTESTS_API_URL as string | undefined;
 
-  // Server-filtered card feed: 100 contests at a time.
+  // Server-filtered card feed: 20 contests per API page.
   const [contests, setContests] = useState<Contest[]>([]);
-  const [feedTotal, setFeedTotal] = useState(0);
   const [feedNextOffset, setFeedNextOffset] = useState(0);
   const [feedHasMore, setFeedHasMore] = useState(false);
+  const [feedLastPageSize, setFeedLastPageSize] = useState(0);
+  const [feedLoading, setFeedLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(false);
 
   // Full catalog: calendar, platform choices and exact status counts.
   const [masterContests, setMasterContests] = useState<Contest[]>([]);
+  const [masterTotal, setMasterTotal] = useState<number | null>(null);
+  const [masterLoading, setMasterLoading] = useState(true);
+  const [masterError, setMasterError] = useState(false);
+  const [catalogRetry, setCatalogRetry] = useState(0);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -3389,6 +3252,7 @@ export default function ContestSection() {
 
   const calendarScrollRef = useRef<HTMLDivElement | null>(null);
   const cardsScrollRef = useRef<HTMLDivElement | null>(null);
+  const paginationSentinelRef = useRef<HTMLDivElement | null>(null);
 
   const feedGenerationRef = useRef(0);
   const loadMoreAbortRef = useRef<AbortController | null>(null);
@@ -3403,13 +3267,19 @@ export default function ContestSection() {
     return () => window.clearTimeout(timeoutId);
   }, [search]);
 
-  // Load the complete contest catalog in the background.
-  // The API allows limit=1000. If it ever exceeds that, this loader follows
-  // pagination.has_more and continues with skip=1000, 2000, ...
+  // Load all API records to ground exact counts and the complete calendar.
+  // Ended contests are filtered out before rendering. Limit=1000 is the API max;
+  // the loader follows pagination.has_more until every API page is retrieved.
   useEffect(() => {
-    if (!apiUrl) return;
+    if (!apiUrl) {
+      setMasterLoading(false);
+      setMasterError(true);
+      return;
+    }
 
     const controller = new AbortController();
+    setMasterLoading(true);
+    setMasterError(false);
 
     (async () => {
       try {
@@ -3419,19 +3289,27 @@ export default function ContestSection() {
         );
 
         if (!controller.signal.aborted) {
-          setMasterContests(completeCatalog);
+          setMasterContests(completeCatalog.contests);
+          setMasterTotal(completeCatalog.total);
+          setMasterError(false);
         }
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;
+        if (!controller.signal.aborted) {
+          setMasterError(true);
+          setMasterTotal(null); // Incomplete scans must never expose exact counts.
+        }
 
         // Non-fatal: the card feed remains usable even if the background
         // catalog request fails.
         console.error("[ContestSection] Failed to load master contest catalog:", err);
+      } finally {
+        if (!controller.signal.aborted) setMasterLoading(false);
       }
     })();
 
     return () => controller.abort();
-  }, [apiUrl]);
+  }, [apiUrl, catalogRetry]);
 
   const platformIdByName = useMemo(() => {
     const map = new Map<string, number>();
@@ -3458,8 +3336,38 @@ export default function ContestSection() {
     return platformIdByName.get(activePlatform.toLowerCase()) ?? null;
   }, [activePlatform, platformIdByName]);
 
+  // The server's pagination.total/has_more can be global even on filtered
+  // requests. The fully fetched master catalogue gives us the exact count for
+  // status + platform filters (when there is no free-text search).
+  const verifiedMatchingCount = useMemo<number | null>(() => {
+    if (masterTotal === null || masterLoading || masterError || debouncedSearch) {
+      return null;
+    }
+    return masterContests.filter((contest) =>
+      contest.status === activeTab &&
+      (activePlatform === "all" || contest.platform.toLowerCase() === activePlatform.toLowerCase()),
+    ).length;
+  }, [masterContests, masterTotal, masterLoading, masterError, debouncedSearch, activeTab, activePlatform]);
+
+  // A short API page cannot justify another automatic fetch on metadata alone.
+  // Exception: when the complete catalogue proves more matching contests exist,
+  // continue paging to retrieve them. This handles inconsistent API metadata
+  // without generating empty retries for the 7-of-31 Upcoming case.
+  const canFetchNextPage = feedHasMore && (verifiedMatchingCount !== null
+    ? contests.length < verifiedMatchingCount
+    : feedLastPageSize >= CARD_PAGE_SIZE);
+
+  // Don't present the global 31 as the total for the 7 upcoming cards.
+  // Text-search totals are not inferred from master because the API may search
+  // fields that the UI does not; show a lower bound until the last page.
+  const displayedMatchingCount = verifiedMatchingCount !== null
+    ? String(verifiedMatchingCount)
+    : canFetchNextPage
+      ? `${contests.length}+`
+      : String(contests.length);
+
   // Upcoming is selected by default, therefore the first card request is:
-  // ?status_filter=upcoming&skip=0&limit=100
+  // ?status_filter=upcoming&skip=0&limit=20
   // instead of loading 100 mixed contests and filtering them locally.
   useEffect(() => {
     if (!apiUrl) {
@@ -3480,7 +3388,11 @@ export default function ContestSection() {
     loadingMoreRef.current = false;
 
     setLoadingMore(false);
+    setLoadMoreError(false);
     setFeedHasMore(false);
+    setFeedLastPageSize(0);
+    setFeedLoading(true);
+    setError(null);
 
     (async () => {
       try {
@@ -3500,10 +3412,10 @@ export default function ContestSection() {
           return;
         }
 
-        setContests(page.contests);
-        setFeedTotal(page.pagination.total);
-        setFeedHasMore(page.pagination.has_more && page.contests.length > 0);
-        setFeedNextOffset(page.pagination.offset + page.contests.length);
+        setContests(page.contests.filter((contest) => contest.status === activeTab));
+        setFeedHasMore(page.pagination.has_more);
+        setFeedLastPageSize(page.rawCount);
+        setFeedNextOffset(page.pagination.offset + page.rawCount);
         setError(null);
 
         window.requestAnimationFrame(() => {
@@ -3517,6 +3429,7 @@ export default function ContestSection() {
       } finally {
         if (generation === feedGenerationRef.current) {
           setLoading(false);
+          setFeedLoading(false);
         }
       }
     })();
@@ -3530,8 +3443,8 @@ export default function ContestSection() {
     debouncedSearch,
   ]);
 
-  async function loadMoreContests() {
-    if (!apiUrl || !feedHasMore || loadingMoreRef.current) return;
+  async function loadMoreContests(retry = false) {
+    if (!apiUrl || loading || feedLoading || (!retry && loadMoreError) || !canFetchNextPage || loadingMoreRef.current) return;
     if (activePlatform !== "all" && activePlatformId === null) return;
 
     const generation = feedGenerationRef.current;
@@ -3541,6 +3454,7 @@ export default function ContestSection() {
     loadMoreAbortRef.current = controller;
     loadingMoreRef.current = true;
     setLoadingMore(true);
+    setLoadMoreError(false);
 
     try {
       const page = await fetchContestPage(
@@ -3559,16 +3473,21 @@ export default function ContestSection() {
         return;
       }
 
-      setContests((previous) => mergeUniqueContests(previous, page.contests));
-      setFeedTotal(page.pagination.total);
-      setFeedHasMore(page.pagination.has_more && page.contests.length > 0);
-      setFeedNextOffset(page.pagination.offset + page.contests.length);
+      // A bad backend page can repeat records. Never retry it indefinitely.
+      const existingIds = new Set(contests.map((contest) => contest.id));
+      const matchingItems = page.contests.filter((contest) => contest.status === activeTab);
+      const newItems = matchingItems.filter((contest) => !existingIds.has(contest.id));
+      setContests((previous) => mergeUniqueContests(previous, matchingItems));
+      setFeedHasMore(page.pagination.has_more && newItems.length > 0);
+      setFeedLastPageSize(page.rawCount);
+      setFeedNextOffset(page.pagination.offset + page.rawCount);
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       if (generation !== feedGenerationRef.current) return;
 
       // Never remove already-loaded cards if a later page fails.
       console.error("[ContestSection] Failed to load more contests:", err);
+      setLoadMoreError(true);
     } finally {
       if (generation === feedGenerationRef.current) {
         loadingMoreRef.current = false;
@@ -3584,7 +3503,7 @@ export default function ContestSection() {
   function handleCardsScroll() {
     const element = cardsScrollRef.current;
 
-    if (!element || !feedHasMore || loadingMoreRef.current) return;
+    if (!element || feedLoading || !canFetchNextPage || loadingMoreRef.current || loadMoreError) return;
 
     const distanceFromBottom =
       element.scrollHeight - element.scrollTop - element.clientHeight;
@@ -3593,6 +3512,56 @@ export default function ContestSection() {
       void loadMoreContests();
     }
   }
+
+  useEffect(() => {
+    const panel = cardsScrollRef.current;
+    if (!panel || loading || feedLoading || error || !canFetchNextPage || loadingMore || loadMoreError) return;
+    if (panel.scrollHeight - panel.clientHeight <= LOAD_MORE_THRESHOLD_PX) {
+      void loadMoreContests();
+    }
+  }, [contests.length, canFetchNextPage, loading, feedLoading, error, loadingMore, loadMoreError, calendarExpanded]);
+
+  // The sentinel handles automatic pagination even when the browser does not
+  // dispatch a normal scroll event (for example, when a linked wheel handler
+  // moves scrollTop programmatically). The scroll handler above remains a fallback.
+  // A desktop panel is its own scroll root; mobile uses the window viewport.
+  useEffect(() => {
+    const sentinel = paginationSentinelRef.current;
+    const panel = cardsScrollRef.current;
+    if (
+      !sentinel || !panel || !canFetchNextPage || loading || feedLoading ||
+      loadingMore || loadMoreError || error || typeof IntersectionObserver === "undefined"
+    ) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void loadMoreContests();
+        }
+      },
+      {
+        root: window.matchMedia("(min-width: 1024px)").matches ? panel : null,
+        rootMargin: "0px 0px 360px 0px",
+        threshold: 0,
+      },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [
+    contests.length,
+    feedNextOffset,
+    canFetchNextPage,
+    loading,
+    feedLoading,
+    loadingMore,
+    loadMoreError,
+    error,
+    calendarExpanded,
+    activeTab,
+    activePlatformId,
+    debouncedSearch,
+  ]);
 
   // Preserve the existing strict linked wheel behavior exactly.
   useEffect(() => {
@@ -3626,9 +3595,11 @@ export default function ContestSection() {
     };
   }, [loading, error, calendarExpanded, contests.length, masterContests.length]);
 
-  // Platform choices come from the complete catalog instead of the current page.
+  // Platform choices include only upcoming/live contests, not ended-only platforms.
   const platforms = useMemo(() => {
-    const source = masterContests.length > 0 ? masterContests : contests;
+    const source = masterContests.length > 0
+      ? masterContests.filter((contest) => contest.status !== "ended")
+      : contests;
 
     return [
       "all",
@@ -3638,32 +3609,29 @@ export default function ContestSection() {
     ];
   }, [masterContests, contests]);
 
-  // Exact global counts are independent of how many cards have been rendered.
-  // While the master catalog is still loading, pagination.total gives an exact
-  // fallback for the currently selected status.
-  const counts = useMemo<Record<Tab, number>>(() => {
-    const result: Record<Tab, number> = {
-      live: 0,
-      upcoming: 0,
-      ended: 0,
-    };
-
-    masterContests.forEach((contest) => {
-      result[contest.status] += 1;
-    });
-
-    if (masterContests.length === 0 && feedTotal > 0) {
-      result[activeTab] = feedTotal;
+  // Exact status counts come from the COMPLETE API catalogue, never from
+  // whatever pages of cards happen to be loaded. Ended contests are excluded.
+  const counts = useMemo<Record<Tab, number | null>>(() => {
+    if (masterTotal === null || masterError || masterLoading) {
+      return { live: null, upcoming: null };
     }
-
+    const result: Record<Tab, number> = { live: 0, upcoming: 0 };
+    masterContests.forEach((contest) => {
+      if (contest.status !== "ended") result[contest.status] += 1;
+    });
     return result;
-  }, [masterContests, feedTotal, activeTab]);
+  }, [masterContests, masterTotal, masterError, masterLoading]);
 
-  // Calendar always receives the complete catalog, never just the currently
-  // rendered 100-card page.
-  const calendarContests = useMemo(() => {
-    return masterContests.length > 0 ? masterContests : contests;
-  }, [masterContests, contests]);
+  const visibleTotal = counts.upcoming !== null && counts.live !== null
+    ? counts.upcoming + counts.live
+    : null;
+
+  // Calendar shows ALL upcoming and live contests across the full API catalogue,
+  // irrespective of card pagination, status tab, platform filter or search.
+  const calendarContests = useMemo(
+    () => masterContests.filter((contest) => contest.status !== "ended"),
+    [masterContests],
+  );
 
   const handleCalendarExpandToggle = () => {
 
@@ -3753,7 +3721,7 @@ export default function ContestSection() {
 
 
 
-      <div className="relative z-10 mx-auto max-w-7xl">
+      <div className="relative z-10 mx-auto max-w-7xl 2xl:max-w-[1880px] min-[2200px]:max-w-[2160px]">
 
         <div className="mb-8 grid gap-3 md:grid-cols-12 md:items-center">
 
@@ -3766,6 +3734,7 @@ export default function ContestSection() {
               placeholder="Search contests or platforms..."
 
               value={search}
+              maxLength={100}
 
               onChange={(e) => setSearch(e.target.value)}
 
@@ -3813,13 +3782,13 @@ export default function ContestSection() {
 
         {loading ? (
 
-          <div className="grid gap-6 lg:grid-cols-3">
+          <div className="grid gap-6 lg:grid-cols-3 2xl:gap-8">
 
             <CalendarSkeleton />
 
 
 
-            <div className="grid gap-5 sm:grid-cols-2 lg:col-span-2">
+            <div className="grid gap-5 sm:grid-cols-2 lg:col-span-2 2xl:gap-6">
 
               {Array.from({ length: 6 }).map((_, index) => (
 
@@ -3841,13 +3810,15 @@ export default function ContestSection() {
 
         ) : (
 
-          <div className="grid gap-6 transition-all duration-500 ease-out pb-24 lg:h-[calc(100vh-260px)] lg:min-h-[560px] lg:grid-cols-3 lg:overflow-visible">
+          <div className="grid gap-6 transition-all duration-500 ease-out pb-24 lg:h-[calc(100vh-260px)] lg:min-h-[560px] lg:grid-cols-3 lg:overflow-visible 2xl:h-[calc(100dvh-240px)] 2xl:min-h-[680px] 2xl:grid-cols-5 2xl:gap-8 min-[2200px]:grid-cols-6">
 
             <aside
 
               className={`min-h-0 transition-all duration-500 ease-out ${
 
-                calendarExpanded ? "lg:col-span-2" : "lg:col-span-1"
+                calendarExpanded
+                  ? "lg:col-span-2 2xl:col-span-3 min-[2200px]:col-span-3"
+                  : "lg:col-span-1 2xl:col-span-2 min-[2200px]:col-span-2"
 
               }`}
 
@@ -3861,25 +3832,34 @@ export default function ContestSection() {
 
               >
 
-                <ContestCalendar
-
-                  month={calendarMonth}
-
-                  contests={calendarContests}
-
-                  expanded={calendarExpanded}
-
-                  focusedDateKey={focusedCalendarDate}
-
-                  onExpandToggle={handleCalendarExpandToggle}
-
-                  onMonthChange={handleCalendarMonthChange}
-
-                  onDetails={setSelectedContest}
-
-                  onShowAllForDay={handleShowAllForDay}
-
-                />
+                {masterLoading ? (
+                  <div className="px-2">
+                    <p className="mb-2 text-[0.68rem] text-white/35">Loading all calendar contests…</p>
+                    <CalendarSkeleton />
+                  </div>
+                ) : masterError ? (
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                    <p className="text-sm text-white/55">The complete calendar catalogue is unavailable. The card list still works.</p>
+                    <button
+                      type="button"
+                      onClick={() => setCatalogRetry((previous) => previous + 1)}
+                      className="mt-3 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 py-2 text-xs font-semibold text-purple-300 hover:bg-purple-500/15"
+                    >
+                      Retry calendar
+                    </button>
+                  </div>
+                ) : (
+                  <ContestCalendar
+                    month={calendarMonth}
+                    contests={calendarContests}
+                    expanded={calendarExpanded}
+                    focusedDateKey={focusedCalendarDate}
+                    onExpandToggle={handleCalendarExpandToggle}
+                    onMonthChange={handleCalendarMonthChange}
+                    onDetails={setSelectedContest}
+                    onShowAllForDay={handleShowAllForDay}
+                  />
+                )}
 
               </div>
 
@@ -3891,7 +3871,9 @@ export default function ContestSection() {
 
               className={`min-h-0 transition-all duration-500 ease-out ${
 
-                calendarExpanded ? "lg:col-span-1" : "lg:col-span-2"
+                calendarExpanded
+                  ? "lg:col-span-1 2xl:col-span-2 min-[2200px]:col-span-3"
+                  : "lg:col-span-2 2xl:col-span-3 min-[2200px]:col-span-4"
 
               }`}
 
@@ -3913,35 +3895,39 @@ export default function ContestSection() {
 
                     <h3 className="mt-1 text-2xl font-bold text-white">
 
-                      {activeTab === "upcoming"
-
-                        ? "Upcoming"
-
-                        : activeTab === "live"
-
-                          ? "Live"
-
-                          : "Ended"}{" "}
+                      {activeTab === "upcoming" ? "Upcoming" : "Live"}{" "}
 
                       <span className="text-purple-500">Contests</span>
 
                     </h3>
+                    {visibleTotal !== null && (
+                      <p className="mt-1 text-[0.67rem] text-white/35">
+                        All {visibleTotal} · Upcoming {counts.upcoming} · Live {counts.live}
+                      </p>
+                    )}
 
                   </div>
 
 
 
-                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-white/40">
-
-                    {feedTotal}
-
+                  <span
+                    title="Contests matching the selected status, platform and search"
+                    className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-white/40"
+                  >
+                    {feedLoading ? "…" : displayedMatchingCount} matching
                   </span>
 
                 </div>
 
 
 
-                {contests.length === 0 ? (
+                {feedLoading ? (
+                  <div className={calendarExpanded ? "grid gap-5" : "grid gap-5 sm:grid-cols-2"}>
+                    {Array.from({ length: 4 }).map((_, index) => (
+                      <SkeletonCard key={index} />
+                    ))}
+                  </div>
+                ) : contests.length === 0 ? (
 
                   <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 px-6 py-20 text-center">
 
@@ -3969,9 +3955,9 @@ export default function ContestSection() {
 
                       calendarExpanded
 
-                        ? "grid w-full gap-5 pb-1"
+                        ? "grid w-full gap-5 pb-1 2xl:grid-cols-1 2xl:gap-6 min-[2200px]:grid-cols-2"
 
-                        : "grid w-full gap-5 pb-1 sm:grid-cols-2"
+                        : "grid w-full gap-5 pb-1 sm:grid-cols-2 2xl:grid-cols-2 2xl:gap-6 min-[2200px]:grid-cols-3"
 
                     }
 
@@ -3987,6 +3973,41 @@ export default function ContestSection() {
 
                 )}
 
+                {!feedLoading && contests.length > 0 && (
+                  <div className="mt-5 flex flex-col items-center gap-2 pb-6 text-center" aria-live="polite">
+                    <p className="text-xs text-white/35">
+                      Showing {contests.length} of {displayedMatchingCount} matching {activeTab} contests
+                    </p>
+                    {canFetchNextPage && (
+                      <>
+                        {/* This sentinel triggers the next API page near the bottom. */}
+                        <div ref={paginationSentinelRef} className="h-px w-full" aria-hidden="true" />
+                        <div className="flex items-center gap-2 text-xs text-white/40">
+                          {loadingMore ? (
+                            <>
+                              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-purple-500/30 border-t-purple-400" aria-hidden="true" />
+                              Loading next contests…
+                            </>
+                          ) : loadMoreError ? (
+                            <span className="text-red-400">Couldn't load the next page</span>
+                          ) : (
+                            <span>Scroll for more · {CARD_PAGE_SIZE} per request</span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={loadingMore}
+                          onClick={() => void loadMoreContests(true)}
+                          className="rounded-xl border border-purple-500/30 bg-purple-500/10 px-5 py-2.5 text-xs font-semibold text-purple-300 transition-colors hover:bg-purple-500/15 disabled:cursor-wait disabled:opacity-60"
+                        >
+                          {loadingMore ? "Loading…" : loadMoreError ? "Retry loading contests" : "Load more now"}
+                        </button>
+                      </>
+                    )}
+                    {!canFetchNextPage && <p className="text-xs text-white/30">All matching contests loaded</p>}
+                  </div>
+                )}
+
               </div>
 
             </main>
@@ -3997,18 +4018,14 @@ export default function ContestSection() {
 
 
 
-        {!loading && !error && (
-
+        {!loading && !error && !feedLoading && (
           <p className="mt-0 text-center text-xs text-white/25">
-
-            Showing {contests.length}
-            {feedTotal > contests.length ? ` of ${feedTotal}` : ""} contest
-            {feedTotal !== 1 ? "s" : ""} · Expand calendar for a
-
-            larger monthly planning view
-
+            Showing {contests.length} of {displayedMatchingCount} matching {activeTab} contests
+            {visibleTotal !== null
+              ? ` · ${visibleTotal} available contests across all months`
+              : " · Full calendar count unavailable"}
+            {" · Calendar includes upcoming and live contests only"}
           </p>
-
         )}
 
       </div>
