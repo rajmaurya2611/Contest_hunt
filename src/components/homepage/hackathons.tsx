@@ -2,7 +2,6 @@
 
 import {
   useEffect,
-  useMemo,
   useState,
   type SyntheticEvent,
 } from "react";
@@ -13,14 +12,55 @@ const HACKATHON_PAGE_HREF = "/hackathons";
 
 // Put your file here: public/animations/cat.lottie
 const LOTTIE_SRC = "/animations/programming and website-purple.lottie";
-// const LOTTIE_SRC = "/animations/Programming Computer.lottie";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type ApiHackathonStatus = "ongoing" | "upcoming" | "ended";
+
+interface ApiHackathon {
+  id: number;
+  name: string;
+  url: string;
+  start_time: number;
+  end_time: number;
+  duration: number;
+  description: string | null;
+  platform_id: number;
+  category_id: number;
+  banner: string | null;
+  mode: string | null;
+  location: string | null;
+  prize_pool: string | number | null;
+  amount: number | string | null;
+  currency: string | null;
+  difficulty: string | null;
+  tags: string[] | string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  platform_name: string;
+  category_name: string;
+  status: ApiHackathonStatus;
+}
+
+interface HackathonApiResponse {
+  success: boolean;
+  data: ApiHackathon[];
+  message?: string;
+  timestamp?: string;
+  pagination?: {
+    total?: number;
+    limit?: number;
+    offset?: number;
+    has_more?: boolean;
+  };
+}
 
 interface Hackathon {
   id: number;
   name: string;
   platform: string;
+  platform_id: number;
   url: string;
   start_time: number;
   end_time: number;
@@ -28,10 +68,18 @@ interface Hackathon {
   description: string;
   created_at: string;
   hackathon_banner?: string;
-  mode?: string;
+  mode?: string | null;
+  location?: string | null;
+  prize_pool?: string | number | null;
+  amount?: string | number | null;
+  currency?: string | null;
+  difficulty?: string | null;
+  tags?: string[] | string | null;
+  category_name?: string | null;
+  api_status?: ApiHackathonStatus;
 }
 
-type Status = "live" | "upcoming" | "ended";
+type HackathonCardVariant = "upcoming" | "live";
 
 // ─── Platform config ──────────────────────────────────────────────────────────
 
@@ -65,10 +113,19 @@ const PLATFORM_META: Record<
   },
 };
 
-function getPlatform(p: string) {
+function getPlatformKey(platformName: string) {
+  return String(platformName || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function getPlatform(platformName: string) {
+  const safePlatformName = platformName || "Platform";
+  const key = getPlatformKey(safePlatformName);
+
   return (
-    PLATFORM_META[p?.toLowerCase()] ?? {
-      label: p || "Platform",
+    PLATFORM_META[key] ?? {
+      label: safePlatformName,
       badge: "text-purple-400",
       dot: "bg-purple-400",
       logo: "/icons/default.png",
@@ -78,18 +135,12 @@ function getPlatform(p: string) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getStatus(start: number, end: number): Status {
-  const now = Math.floor(Date.now() / 1000);
-  if (now >= start && now <= end) return "live";
-  if (now < start) return "upcoming";
-  return "ended";
-}
-
 function formatDuration(seconds: number) {
-  const totalHours = Math.floor(seconds / 3600);
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const totalHours = Math.floor(safeSeconds / 3600);
   const days = Math.floor(totalHours / 24);
   const hours = totalHours % 24;
-  const minutes = Math.floor((seconds % 3600) / 60);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
 
   if (days > 0 && hours > 0) return `${days}d ${hours}h`;
   if (days > 0) return `${days}d`;
@@ -140,9 +191,191 @@ function clampText(text: string, max = 110) {
   return text.length > max ? `${text.slice(0, max).trim()}...` : text;
 }
 
+function cleanDescription(text: string) {
+  if (!text) return "";
+
+  return text
+    .replace(/#{1,6}\s*/g, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[(.*?)\]\([^)]*\)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatMode(mode?: string | null) {
+  const value = mode?.trim();
+  if (!value) return null;
+
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
+function formatPrize(hackathon: Hackathon) {
+  const prizePool = hackathon.prize_pool;
+
+  if (
+    prizePool !== null &&
+    prizePool !== undefined &&
+    String(prizePool).trim()
+  ) {
+    return String(prizePool).trim();
+  }
+
+  const rawAmount = hackathon.amount;
+
+  if (
+    rawAmount === null ||
+    rawAmount === undefined ||
+    String(rawAmount).trim() === ""
+  ) {
+    return null;
+  }
+
+  const numericAmount = Number(rawAmount);
+  const currency = hackathon.currency?.trim().toUpperCase();
+
+  if (Number.isFinite(numericAmount) && currency) {
+    try {
+      return new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency,
+        maximumFractionDigits: 0,
+      }).format(numericAmount);
+    } catch {
+      return `${currency} ${numericAmount.toLocaleString("en-IN")}`;
+    }
+  }
+
+  if (currency) return `${currency} ${String(rawAmount).trim()}`;
+  return String(rawAmount).trim();
+}
+
+function getTagList(tags?: Hackathon["tags"]) {
+  if (Array.isArray(tags)) {
+    return tags.map((tag) => String(tag).trim()).filter(Boolean);
+  }
+
+  if (typeof tags === "string") {
+    return tags
+      .split(/[,|]/)
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function normalizeHackathon(item: ApiHackathon): Hackathon {
+  return {
+    id: item.id,
+    name: item.name,
+    platform: item.platform_name || "Unknown",
+    platform_id: item.platform_id,
+    url: item.url,
+    start_time: item.start_time,
+    end_time: item.end_time,
+    duration: item.duration,
+    description: item.description || "",
+    created_at: item.created_at,
+    hackathon_banner: item.banner || undefined,
+    mode: item.mode,
+    location: item.location,
+    prize_pool: item.prize_pool,
+    amount: item.amount,
+    currency: item.currency,
+    difficulty: item.difficulty,
+    tags: item.tags,
+    category_name: item.category_name,
+    api_status: item.status,
+  };
+}
+
+function isValidApiHackathon(item: ApiHackathon) {
+  return Boolean(
+    item &&
+      typeof item.id === "number" &&
+      item.name &&
+      item.url &&
+      typeof item.start_time === "number" &&
+      typeof item.end_time === "number" &&
+      typeof item.duration === "number" &&
+      item.platform_name &&
+      ["ongoing", "upcoming", "ended"].includes(item.status),
+  );
+}
+
+function buildHackathonApiUrl(
+  baseUrl: string,
+  statusFilter: "upcoming" | "active",
+  limit = 5,
+) {
+  const url = new URL(baseUrl, window.location.origin);
+
+  url.searchParams.set("status_filter", statusFilter);
+  url.searchParams.set("skip", "0");
+  url.searchParams.set("limit", String(limit));
+
+  return url.toString();
+}
+
+async function fetchHackathonPreview(
+  baseUrl: string,
+  statusFilter: "upcoming" | "active",
+  signal: AbortSignal,
+) {
+  const url = buildHackathonApiUrl(baseUrl, statusFilter, 5);
+  const response = await fetch(url, { signal });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const json = (await response.json()) as HackathonApiResponse;
+
+  if (!json.success) {
+    throw new Error(json.message || "Hackathon API returned success=false");
+  }
+
+  if (!Array.isArray(json.data)) {
+    throw new Error("Hackathon API data is not an array");
+  }
+
+  const expectedStatus =
+    statusFilter === "active" ? "ongoing" : "upcoming";
+
+  return json.data
+    .filter((item) => {
+      if (!isValidApiHackathon(item)) {
+        console.warn("[HackathonSection] Invalid hackathon skipped:", item);
+        return false;
+      }
+
+      if (item.status !== expectedStatus) {
+        console.warn(
+          "[HackathonSection] Unexpected status skipped:",
+          item.status,
+          item,
+        );
+        return false;
+      }
+
+      return true;
+    })
+    .map(normalizeHackathon)
+    .sort((a, b) =>
+      statusFilter === "active"
+        ? a.end_time - b.end_time
+        : a.start_time - b.start_time,
+    )
+    .slice(0, 5);
+}
+
 // ─── Calendar + Share Helpers ─────────────────────────────────────────────────
 
-const APP_DOWNLOAD_URL = "https://play.google.com/store/apps/details?id=com.miraidyo.contesthunt&pcampaignid=web_share";
+const APP_DOWNLOAD_URL =
+  "https://play.google.com/store/apps/details?id=com.miraidyo.contesthunt&pcampaignid=web_share";
+
 const BRAND_PAGE_NAME = "Hackathon Calendar";
 
 function toGoogleCalendarDate(unix: number) {
@@ -160,16 +393,18 @@ function getGoogleCalendarUrl(hackathon: Hackathon) {
   )}/${toGoogleCalendarDate(hackathon.end_time)}`;
 
   const details = encodeURIComponent(
-    `${hackathon.description || "Hackathon"}\n\nHackathon Link: ${
+    `${cleanDescription(hackathon.description) || "Hackathon"}\n\nHackathon Link: ${
       hackathon.url
     }`,
   );
 
-  const location = encodeURIComponent(
+  const locationText =
+    hackathon.location?.trim() ||
     `${getPlatform(hackathon.platform).label}${
       hackathon.mode ? ` · ${hackathon.mode}` : ""
-    }`,
-  );
+    }`;
+
+  const location = encodeURIComponent(locationText);
 
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${dates}&details=${details}&location=${location}`;
 }
@@ -424,10 +659,31 @@ function HackathonListItem({
   variant,
 }: {
   hackathon: Hackathon;
-  variant: "upcoming" | "live";
+  variant: HackathonCardVariant;
 }) {
   const meta = getPlatform(hackathon.platform);
   const googleCalendarUrl = getGoogleCalendarUrl(hackathon);
+
+  const description = cleanDescription(hackathon.description);
+  const modeLabel = formatMode(hackathon.mode);
+  const location = hackathon.location?.trim() || null;
+
+  const locationLabel =
+    location &&
+    !(hackathon.mode?.toLowerCase() === "online" &&
+      location.toLowerCase() === "online")
+      ? clampText(location, 52)
+      : null;
+
+  const prizeLabel = formatPrize(hackathon);
+  const difficultyLabel = hackathon.difficulty?.trim() || null;
+  const visibleTags = getTagList(hackathon.tags).slice(0, 2);
+
+  const detailItems = [
+    locationLabel ? `Location · ${locationLabel}` : null,
+    prizeLabel ? `Prize · ${prizeLabel}` : null,
+    difficultyLabel ? `Difficulty · ${difficultyLabel}` : null,
+  ].filter((item): item is string => Boolean(item));
 
   const statusText =
     variant === "live"
@@ -435,7 +691,7 @@ function HackathonListItem({
       : `Starts in ${timeUntil(hackathon.start_time).replace(/^in\s*/, "")}`;
 
   return (
-    <article className="group block min-h-[285px] rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-4 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]">
+    <article className="group block h-[480px] w-full min-w-0 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-4 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]">
       <div className="flex h-full flex-col">
         <HackathonBanner
           banner={hackathon.hackathon_banner}
@@ -461,9 +717,9 @@ function HackathonListItem({
             </div>
           </div>
 
-          {hackathon.mode ? (
+          {modeLabel ? (
             <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-white/60">
-              {hackathon.mode}
+              {modeLabel}
             </span>
           ) : null}
         </div>
@@ -479,8 +735,32 @@ function HackathonListItem({
         </div>
 
         <p className="mt-2 min-h-[2.5rem] line-clamp-2 text-xs leading-5 text-white/45">
-          {hackathon.description ? clampText(hackathon.description) : "\u00A0"}
+          {description ? clampText(description) : "\u00A0"}
         </p>
+
+        {(detailItems.length > 0 || visibleTags.length > 0) && (
+          <div className="mt-2 text-[0.68rem] leading-5 text-white/40">
+            {detailItems.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                {detailItems.map((item, index) => (
+                  <span
+                    key={item}
+                    className="inline-flex min-w-0 items-center gap-2"
+                  >
+                    {index > 0 && <span className="text-white/20">•</span>}
+                    <span className="max-w-full truncate">{item}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {visibleTags.length > 0 && (
+              <div className="mt-0.5 truncate text-white/35">
+                Tags · {visibleTags.join(" · ")}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-auto flex items-center justify-between gap-4 overflow-hidden pt-4 text-xs text-white/55">
           <span className="min-w-0 truncate">
@@ -540,11 +820,11 @@ function HackathonColumn({
 }: {
   title: string;
   items: Hackathon[];
-  variant: "upcoming" | "live";
+  variant: HackathonCardVariant;
 }) {
   return (
-    <div className="h-full">
-      <div className="mb-5 border-b border-white/10 pb-4">
+    <div className="flex h-full w-full min-w-0 flex-col">
+      <div className="mb-5 shrink-0 border-b border-white/10 pb-4">
         {variant === "live" ? (
           <div className="flex items-center gap-3">
             <span className="h-2.5 w-2.5 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
@@ -555,7 +835,7 @@ function HackathonColumn({
         )}
       </div>
 
-      <div className="space-y-4">
+      <div className="min-w-0 flex-1 space-y-4">
         {items.length === 0 ? (
           <div className="py-10 text-sm text-white/35">
             No {variant} hackathons right now.
@@ -571,7 +851,7 @@ function HackathonColumn({
         )}
       </div>
 
-      <div className="pt-6">
+      <div className="mt-auto shrink-0 pt-6">
         <a
           href={HACKATHON_PAGE_HREF}
           className="inline-flex w-full items-center justify-center rounded-2xl border border-purple-500/30 bg-purple-500/10 px-5 py-3 text-center text-sm font-semibold text-purple-400 transition-all duration-200 hover:bg-purple-500/15"
@@ -596,7 +876,7 @@ function ListSkeleton() {
         {Array.from({ length: 5 }).map((_, index) => (
           <div
             key={index}
-            className="min-h-[285px] rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+            className="h-[480px] w-full min-w-0 rounded-2xl border border-white/10 bg-white/[0.03] p-4"
           >
             <div className="h-[140px] w-full animate-pulse rounded-2xl bg-white/10 md:h-[150px]" />
 
@@ -637,12 +917,16 @@ function ListSkeleton() {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function HackathonSection() {
-  const [hackathons, setHackathons] = useState<Hackathon[]>([]);
+  const [topUpcoming, setTopUpcoming] = useState<Hackathon[]>([]);
+  const [topLive, setTopLive] = useState<Hackathon[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
+    const controller = new AbortController();
+    let isMounted = true;
+
+    async function loadPreview() {
       try {
         const apiUrl = import.meta.env.VITE_HACKATHONS_API_URL;
 
@@ -650,32 +934,72 @@ export default function HackathonSection() {
           throw new Error("VITE_HACKATHONS_API_URL is not defined");
         }
 
-        const res = await fetch(apiUrl);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const [upcomingResult, liveResult] = await Promise.allSettled([
+          fetchHackathonPreview(apiUrl, "upcoming", controller.signal),
+          fetchHackathonPreview(apiUrl, "active", controller.signal),
+        ]);
 
-        const data: Hackathon[] = await res.json();
-        setHackathons(Array.isArray(data) ? data : []);
+        if (!isMounted || controller.signal.aborted) return;
+
+        const nextUpcoming =
+          upcomingResult.status === "fulfilled" ? upcomingResult.value : [];
+
+        const nextLive =
+          liveResult.status === "fulfilled" ? liveResult.value : [];
+
+        setTopUpcoming(nextUpcoming);
+        setTopLive(nextLive);
+
+        if (
+          upcomingResult.status === "rejected" &&
+          liveResult.status === "rejected"
+        ) {
+          const upcomingReason = upcomingResult.reason;
+          const liveReason = liveResult.reason;
+
+          throw new Error(
+            upcomingReason instanceof Error
+              ? upcomingReason.message
+              : liveReason instanceof Error
+                ? liveReason.message
+                : "Failed to fetch hackathons",
+          );
+        }
+
+        if (upcomingResult.status === "rejected") {
+          console.error(
+            "[HackathonSection] Upcoming hackathons failed:",
+            upcomingResult.reason,
+          );
+        }
+
+        if (liveResult.status === "rejected") {
+          console.error(
+            "[HackathonSection] Live hackathons failed:",
+            liveResult.reason,
+          );
+        }
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Failed to fetch");
+        if (!isMounted || controller.signal.aborted) return;
+
+        console.error("[HackathonSection] Failed to fetch hackathons:", err);
+        setError(
+          err instanceof Error ? err.message : "Failed to fetch hackathons",
+        );
       } finally {
-        setLoading(false);
+        if (isMounted && !controller.signal.aborted) {
+          setLoading(false);
+        }
       }
-    })();
+    }
+
+    loadPreview();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, []);
-
-  const topUpcoming = useMemo(() => {
-    return hackathons
-      .filter((h) => getStatus(h.start_time, h.end_time) === "upcoming")
-      .sort((a, b) => a.start_time - b.start_time)
-      .slice(0, 5);
-  }, [hackathons]);
-
-  const topLive = useMemo(() => {
-    return hackathons
-      .filter((h) => getStatus(h.start_time, h.end_time) === "live")
-      .sort((a, b) => a.end_time - b.end_time)
-      .slice(0, 5);
-  }, [hackathons]);
 
   return (
     <section
@@ -690,7 +1014,7 @@ export default function HackathonSection() {
         </div>
 
         {loading ? (
-          <div className="grid gap-8 lg:min-h-[140vh] lg:grid-cols-3">
+          <div className="grid items-stretch gap-8 lg:min-h-[140vh] lg:grid-cols-3">
             <div>
               <div className="lg:sticky lg:top-24">
                 <div className="h-[70vh] lg:h-[82vh]" />
@@ -705,7 +1029,7 @@ export default function HackathonSection() {
             ⚠️ {error}
           </div>
         ) : (
-          <div className="grid gap-8 lg:min-h-[140vh] lg:grid-cols-3">
+          <div className="grid items-stretch gap-8 lg:min-h-[140vh] lg:grid-cols-3">
             <div>
               <div className="lg:sticky lg:top-24">
                 <CatOnlyPanel />

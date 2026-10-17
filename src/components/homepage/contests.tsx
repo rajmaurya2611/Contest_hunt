@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRive, Layout, Fit, Alignment } from "@rive-app/react-webgl2";
 
 // ─── Rive config ──────────────────────────────────────────────────────────────
+
 const RIVE_SRC = "/magic-cat.riv";
 const RIVE_ARTBOARD = "WCT 01";
 const RIVE_ANIMATION = "CAT RUN";
-
-// Change if your main contest page route is different
 const CONTEST_PAGE_HREF = "/contests";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -137,7 +136,6 @@ function getPlatformKey(platformName: string) {
 function getPlatform(platformName: string) {
   const safePlatformName = platformName || "Unknown";
   const key = getPlatformKey(safePlatformName);
-
   return (
     PLATFORM_META[key] ?? {
       label: safePlatformName,
@@ -152,15 +150,12 @@ function getPlatform(platformName: string) {
 
 function formatDuration(seconds: number) {
   const safeSeconds = Math.max(0, Number(seconds) || 0);
-
   const d = Math.floor(safeSeconds / 86400);
   const h = Math.floor((safeSeconds % 86400) / 3600);
   const m = Math.floor((safeSeconds % 3600) / 60);
-
   if (d > 0) return h > 0 ? `${d}d ${h}h` : `${d}d`;
   if (h === 0) return `${m}m`;
   if (m === 0) return `${h}h`;
-
   return `${h}h ${m}m`;
 }
 
@@ -177,82 +172,122 @@ function formatDateTime(unix: number) {
 
 function timeUntil(unix: number) {
   const diff = unix * 1000 - Date.now();
-
   if (diff <= 0) return "Started";
-
   const d = Math.floor(diff / 86400000);
   const h = Math.floor((diff % 86400000) / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
-
   if (d > 0) return `in ${d}d ${h}h`;
   if (h > 0) return `in ${h}h ${m}m`;
-
   return `in ${Math.max(m, 0)}m`;
 }
 
 function timeLeft(unix: number) {
   const diff = unix * 1000 - Date.now();
-
   if (diff <= 0) return "Ending soon";
-
   const d = Math.floor(diff / 86400000);
   const h = Math.floor((diff % 86400000) / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
-
   if (d > 0) return `${d}d ${h}h left`;
   if (h > 0) return `${h}h ${m}m left`;
-
   return `${Math.max(m, 0)}m left`;
 }
 
 function collectTextFromSlate(value: unknown): string {
   if (!value) return "";
-
   if (typeof value === "string") return value;
-
   if (Array.isArray(value)) {
     return value.map(collectTextFromSlate).filter(Boolean).join(" ");
   }
-
   if (typeof value === "object") {
     const item = value as Record<string, unknown>;
-
     const ownText = typeof item.text === "string" ? item.text : "";
     const childText = collectTextFromSlate(item.children);
-
     return [ownText, childText].filter(Boolean).join(" ");
   }
-
   return "";
 }
 
 function cleanDescription(description: string, maxLength = 500) {
   const raw = String(description || "").trim();
-
   if (!raw) return "Coding contest";
-
   let cleaned = raw;
-
   try {
     const parsed = JSON.parse(raw);
-    const parsedText = collectTextFromSlate(parsed).replace(/\s+/g, " ").trim();
-
+    const parsedText = collectTextFromSlate(parsed)
+      .replace(/\s+/g, " ")
+      .trim();
     if (parsedText) cleaned = parsedText;
   } catch {
-    cleaned = raw
-      .replace(/\s+/g, " ")
-      .replace(/\[\{.*?'name':\s*'([^']+)'.*?\}\]/g, "$1")
-      .trim();
+    cleaned = raw.replace(/\s+/g, " ").trim();
   }
-
   if (cleaned.length <= maxLength) return cleaned;
-
   return `${cleaned.slice(0, maxLength).trim()}...`;
+}
+
+type ContestPreviewStatusFilter = "upcoming" | "active";
+
+function buildContestPreviewApiUrl(
+  baseUrl: string,
+  statusFilter: ContestPreviewStatusFilter,
+  limit = 5,
+) {
+  const url = new URL(baseUrl, window.location.origin);
+  url.searchParams.set("status_filter", statusFilter);
+  url.searchParams.set("skip", "0");
+  url.searchParams.set("limit", String(limit));
+  return url.toString();
+}
+
+function isValidContest(contest: Contest) {
+  return Boolean(
+    contest &&
+      typeof contest.id === "number" &&
+      contest.name &&
+      contest.url &&
+      typeof contest.start_time === "number" &&
+      typeof contest.end_time === "number" &&
+      typeof contest.duration === "number" &&
+      contest.platform_name &&
+      ["ongoing", "upcoming", "ended"].includes(contest.status),
+  );
+}
+
+async function fetchContestPreview(
+  baseUrl: string,
+  statusFilter: ContestPreviewStatusFilter,
+  signal: AbortSignal,
+) {
+  const url = buildContestPreviewApiUrl(baseUrl, statusFilter, 5);
+  console.info("[ContestSection] Fetching contest preview:", {
+    statusFilter,
+    url,
+  });
+  const res = await fetch(url, { signal });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const json = (await res.json()) as ContestApiResponse;
+  if (!json.success) {
+    throw new Error(json.message || "Contest API returned success=false");
+  }
+  if (!Array.isArray(json.data)) {
+    throw new Error("Contest API data is not an array");
+  }
+  const expectedStatus =
+    statusFilter === "active" ? "ongoing" : "upcoming";
+  return json.data
+    .filter(isValidContest)
+    .filter((contest) => contest.status === expectedStatus)
+    .sort((a, b) =>
+      statusFilter === "active"
+        ? a.end_time - b.end_time
+        : a.start_time - b.start_time,
+    )
+    .slice(0, 5);
 }
 
 const APP_DOWNLOAD_URL =
   "https://play.google.com/store/apps/details?id=com.miraidyo.contesthunt&pcampaignid=web_share";
-
 const BRAND_PAGE_NAME = "Contest Calendar";
 
 function toGoogleCalendarDate(unix: number) {
@@ -264,42 +299,42 @@ function toGoogleCalendarDate(unix: number) {
 
 function getGoogleCalendarUrl(contest: Contest) {
   const text = encodeURIComponent(contest.name);
-
-  const dates = `${toGoogleCalendarDate(contest.start_time)}/${toGoogleCalendarDate(
-    contest.end_time,
-  )}`;
-
+  const dates = `${toGoogleCalendarDate(
+    contest.start_time,
+  )}/${toGoogleCalendarDate(contest.end_time)}`;
   const details = encodeURIComponent(
     `${cleanDescription(contest.description)}\n\nContest Link: ${contest.url}`,
   );
-
-  const location = encodeURIComponent(getPlatform(contest.platform_name).label);
-
+  const location = encodeURIComponent(
+    getPlatform(contest.platform_name).label,
+  );
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${dates}&details=${details}&location=${location}`;
 }
 
 async function shareContest(contest: Contest) {
   const meta = getPlatform(contest.platform_name);
-
   const pageUrl =
-    typeof window !== "undefined" ? window.location.href : APP_DOWNLOAD_URL;
-
+    typeof window !== "undefined"
+      ? window.location.href
+      : APP_DOWNLOAD_URL;
   const shareTitle = `${contest.name} on ${meta.label}`;
-
   const shareMessage = `Hey, check out this contest: ${contest.name}
 
 Platform: ${meta.label}
+
 Starts: ${formatDateTime(contest.start_time)}
+
 Duration: ${formatDuration(contest.duration)}
 
 I found it on ${BRAND_PAGE_NAME}. You can track upcoming coding Contests, Hackathons and Bug Bounties, visit their links, and add them to your calendar easily.
 
 Download the app here:
+
 ${APP_DOWNLOAD_URL}
 
 Explore more contests:
-${pageUrl}`;
 
+${pageUrl}`;
   try {
     if (typeof navigator !== "undefined" && navigator.share) {
       await navigator.share({
@@ -307,16 +342,13 @@ ${pageUrl}`;
         text: shareMessage,
         url: pageUrl,
       });
-
       return;
     }
-
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       await navigator.clipboard.writeText(shareMessage);
       window.alert("Contest share message copied to clipboard!");
       return;
     }
-
     window.alert("Sharing is not supported on this browser.");
   } catch (error) {
     console.error("[ContestSection] Failed to share contest:", error);
@@ -416,14 +448,12 @@ function ShareIcon() {
         stroke="currentColor"
         strokeWidth="1.9"
         strokeLinecap="round"
-        strokeLinejoin="round"
       />
       <path
         d="M8.2 13.1L15.7 17.7"
         stroke="currentColor"
         strokeWidth="1.9"
         strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </svg>
   );
@@ -442,10 +472,8 @@ function CatOnlyPanel() {
       alignment: Alignment.Center,
     }),
   });
-
   useEffect(() => {
     if (!rive) return;
-
     try {
       rive.stop();
       rive.play(RIVE_ANIMATION);
@@ -453,7 +481,6 @@ function CatOnlyPanel() {
       console.error("[ContestSection] Rive play error:", err);
     }
   }, [rive]);
-
   return (
     <div className="relative flex min-h-[70vh] w-full min-w-0 items-center justify-center overflow-hidden rounded-[28px] p-0 lg:min-h-[82vh]">
       <div className="relative z-10 h-[360px] w-full max-w-[360px] sm:h-[420px] sm:max-w-[420px] lg:h-[520px] lg:max-w-[520px]">
@@ -475,7 +502,6 @@ function PlatformLogo({
   dotClass: string;
 }) {
   const [imgError, setImgError] = useState(false);
-
   if (imgError) {
     return (
       <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] transition-transform duration-300 group-hover:scale-110">
@@ -483,7 +509,6 @@ function PlatformLogo({
       </div>
     );
   }
-
   return (
     <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] p-3 transition-transform duration-300 group-hover:scale-110">
       <img
@@ -496,7 +521,38 @@ function PlatformLogo({
   );
 }
 
+function ContestVisual({
+  banner,
+  logo,
+  alt,
+  dotClass,
+}: {
+  banner: string | null;
+  logo: string;
+  alt: string;
+  dotClass: string;
+}) {
+  const [bannerError, setBannerError] = useState(false);
+  if (banner && !bannerError) {
+    return (
+      <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
+        <img
+          src={banner}
+          alt={alt}
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          onError={() => setBannerError(true)}
+        />
+      </div>
+    );
+  }
+  return (
+    <PlatformLogo src={logo} alt={alt} dotClass={dotClass} />
+  );
+}
+
 // ─── Contest Card ─────────────────────────────────────────────────────────────
+// Equal-height compact cards with two-line title/description.
+// No optional prize/chip/tag row: actions follow the description directly.
 
 function ContestListItem({
   contest,
@@ -507,79 +563,123 @@ function ContestListItem({
 }) {
   const meta = getPlatform(contest.platform_name);
   const googleCalendarUrl = getGoogleCalendarUrl(contest);
-
+  const description = cleanDescription(contest.description, 180);
   const statusText =
     variant === "live"
       ? `Ends · ${timeLeft(contest.end_time)}`
       : `Starts · ${timeUntil(contest.start_time).replace(/^in\s*/, "")}`;
-
   return (
-    <article className="group flex h-56 w-full min-w-0 flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-purple-950/20 p-4 no-underline transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:bg-white/[0.05] hover:shadow-[0_8px_32px_rgba(140,69,255,0.14)]">
-      <div className="flex min-h-0 min-w-0 flex-1 items-start gap-4">
-        <PlatformLogo src={meta.logo} alt={meta.label} dotClass={meta.dot} />
-
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="mb-3 flex min-w-0 items-start justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
-
+    <article
+      className="group flex h-[370px] w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.04] via-white/[0.02] to-purple-950/20 p-5 transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/40 hover:shadow-[0_16px_40px_rgba(140,69,255,0.14)]"
+    >
+      {/* ─── HEADER ─────────────────────────────────────── */}
+      <div className="flex min-w-0 shrink-0 items-start justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <ContestVisual
+            banner={contest.banner}
+            logo={meta.logo}
+            alt={contest.name}
+            dotClass={meta.dot}
+          />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
               <span
-                className={`min-w-0 truncate text-[0.72rem] font-semibold uppercase tracking-[0.15em] ${meta.badge}`}
+                className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`}
+              />
+              <span
+                className={`
+                  truncate
+                  text-[0.7rem]
+                  font-bold
+                  uppercase
+                  tracking-[0.18em]
+                  ${meta.badge}
+                `}
               >
                 {meta.label}
               </span>
             </div>
-
-            <span className="max-w-32 shrink-0 truncate rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-[0.65rem] font-bold tracking-widest text-purple-400 sm:max-w-none">
-              {statusText}
-            </span>
           </div>
-
-          <h4 className="line-clamp-2 min-h-12 min-w-0 text-sm font-semibold leading-6 text-white transition-colors duration-200 group-hover:text-purple-300">
-            {contest.name}
-          </h4>
-
-          <div className="mt-auto grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 overflow-hidden pt-3 text-xs text-white/55">
-            <span className="min-w-0 truncate">
-              Starts · {formatDateTime(contest.start_time)}
-            </span>
-
-            <span className="shrink-0 whitespace-nowrap text-right">
-              Duration · {formatDuration(contest.duration)}
-            </span>
+        </div>
+        {/* Countdown / Live status */}
+        <span
+          className="shrink-0 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1.5 text-[0.68rem] font-bold tracking-wide text-purple-300"
+        >
+          {statusText}
+        </span>
+      </div>
+      {/* ─── TITLE: FIXED TWO-LINE SPACE ───────────────── */}
+      <h4
+        title={contest.name}
+        className="mt-3 h-14 min-h-14 shrink-0 overflow-hidden line-clamp-2 min-w-0 text-[1.05rem] font-semibold leading-7 text-white transition-colors duration-200 group-hover:text-purple-200"
+      >
+        {contest.name}
+      </h4>
+      {/* ─── EVENT META ────────────────────────────────── */}
+      <div
+        className="mt-3 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-3"
+      >
+        <div className="min-w-0">
+          <div className="mb-1 text-[0.65rem] font-medium uppercase tracking-wider text-white/35">
+            Starts
+          </div>
+          <div className="truncate text-xs font-medium text-white/80">
+            {formatDateTime(contest.start_time)}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-4">
+          <div className="h-9 w-px bg-white/10" />
+          <div>
+            <div className="mb-1 text-[0.65rem] font-medium uppercase tracking-wider text-white/35">
+              Duration
+            </div>
+            <div className="whitespace-nowrap text-xs font-medium text-white/80">
+              {formatDuration(contest.duration)}
+            </div>
           </div>
         </div>
       </div>
-
-      <div className="mt-4 flex w-full min-w-0 shrink-0 items-center justify-between gap-3 border-t border-white/10 pt-3">
+      {/* ─── DESCRIPTION: RESERVED TWO-LINE SPACE ──────── */}
+      <p
+        title={description}
+        className="mt-3 h-10 min-h-10 shrink-0 overflow-hidden line-clamp-2 text-xs leading-5 text-white/45"
+      >
+        {description}
+      </p>
+      {/* ─── ACTION AREA: COMPACT SPACING ───────────────── */}
+      <div
+        className="mt-3 flex min-w-0 shrink-0 items-center justify-between gap-4 border-t border-white/[0.08] pt-3"
+      >
+        {/* Primary action */}
         <a
           href={googleCalendarUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-center text-[0.7rem] font-semibold text-purple-300 no-underline transition-all duration-200 hover:bg-purple-500/15"
+          className="inline-flex min-w-0 items-center justify-center gap-2 rounded-xl border border-purple-400/30 bg-gradient-to-r from-purple-600/25 to-violet-500/20 px-4 py-2.5 text-[0.72rem] font-semibold text-purple-200 no-underline transition-all duration-200 hover:border-purple-400/50 hover:from-purple-600/35 hover:to-violet-500/30 hover:text-white"
         >
           <CalendarPlusIcon />
-          <span className="truncate">Add Calendar</span>
+          <span className="truncate">
+            Add Calendar
+          </span>
         </a>
-
-        <div className="ml-auto flex shrink-0 items-center justify-end gap-4">
+        {/* Secondary actions */}
+        <div className="flex shrink-0 items-center gap-2">
           <a
             href={contest.url}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Visit contest"
             title="Visit contest"
-            className="inline-flex items-center justify-center text-white/45 no-underline transition-all duration-200 hover:scale-110 hover:text-purple-300"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.025] text-white/40 no-underline transition-all duration-200 hover:border-purple-500/30 hover:bg-purple-500/10 hover:text-purple-300"
           >
             <ExternalLinkIcon />
           </a>
-
           <button
             type="button"
             onClick={() => shareContest(contest)}
             aria-label="Share contest"
             title="Share contest"
-            className="inline-flex items-center justify-center text-white/45 transition-all duration-200 hover:scale-110 hover:text-purple-300"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.025] text-white/40 transition-all duration-200 hover:border-purple-500/30 hover:bg-purple-500/10 hover:text-purple-300"
           >
             <ShareIcon />
           </button>
@@ -590,31 +690,46 @@ function ContestListItem({
 }
 
 // ─── Contest Column ───────────────────────────────────────────────────────────
+// FIX:
+// Removed flex-1 from the cards container.
+// Removed mt-auto from the See All container.
+// See All now follows the last actual card.
 
 function ContestColumn({
   title,
   items,
   variant,
+  loadError,
 }: {
   title: string;
   items: Contest[];
   variant: ContestCardVariant;
+  loadError?: string | null;
 }) {
   return (
-    <div className="h-full w-full min-w-0">
+    <div className="flex w-full min-w-0 flex-col">
+      {/* Column heading */}
       <div className="mb-5 border-b border-white/10 pb-4">
         {variant === "live" ? (
           <div className="flex min-w-0 items-center gap-3">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
-            <h3 className="min-w-0 text-2xl font-bold text-white">{title}</h3>
+            <h3 className="min-w-0 text-2xl font-bold text-white">
+              {title}
+            </h3>
           </div>
         ) : (
-          <h3 className="min-w-0 text-2xl font-bold text-white">{title}</h3>
+          <h3 className="min-w-0 text-2xl font-bold text-white">
+            {title}
+          </h3>
         )}
       </div>
-
+      {/* Contest cards */}
       <div className="w-full min-w-0 space-y-4">
-        {items.length === 0 ? (
+        {loadError ? (
+          <div className="py-10 text-sm text-white/35">
+            Unable to load {variant} contests right now.
+          </div>
+        ) : items.length === 0 ? (
           <div className="py-10 text-sm text-white/35">
             No {variant} contests right now.
           </div>
@@ -628,8 +743,8 @@ function ContestColumn({
           ))
         )}
       </div>
-
-      <div className="pt-6">
+      {/* See All - immediately after the last card */}
+      <div className="mt-6 shrink-0">
         <a
           href={CONTEST_PAGE_HREF}
           className="inline-flex w-full items-center justify-center rounded-2xl border border-purple-500/30 bg-purple-500/10 px-5 py-3 text-center text-sm font-semibold text-purple-400 transition-all duration-200 hover:bg-purple-500/15"
@@ -642,39 +757,40 @@ function ContestColumn({
 }
 
 // ─── Skeletons ────────────────────────────────────────────────────────────────
+// Loading skeleton follows the card’s natural height.
 
 function ListSkeleton() {
   return (
-    <div className="w-full min-w-0">
+    <div className="flex w-full min-w-0 flex-col">
       <div className="mb-5 border-b border-white/10 pb-4">
         <div className="h-8 w-40 max-w-full animate-pulse rounded bg-white/10" />
       </div>
-
       <div className="w-full min-w-0 space-y-4">
         {Array.from({ length: 5 }).map((_, index) => (
           <div
             key={index}
-            className="h-56 w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+            className="h-[370px] w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] p-5"
           >
-            <div className="flex min-w-0 items-start gap-4">
+            <div className="flex min-w-0 items-start justify-between gap-4">
               <div className="h-16 w-16 shrink-0 animate-pulse rounded-2xl bg-white/10" />
-
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-start justify-between gap-3">
-                  <div className="h-3 w-24 min-w-0 animate-pulse rounded bg-white/10" />
-                  <div className="h-7 w-28 shrink-0 animate-pulse rounded-full bg-white/10" />
-                </div>
-
-                <div className="mt-4 h-4 w-4/5 animate-pulse rounded bg-white/10" />
-                <div className="mt-2 h-4 w-3/5 animate-pulse rounded bg-white/10" />
-                <div className="mt-8 h-3 w-full animate-pulse rounded bg-white/10" />
-              </div>
+              <div className="h-7 w-28 shrink-0 animate-pulse rounded-full bg-white/10" />
+            </div>
+            <div className="mt-5 space-y-2">
+              <div className="h-4 w-4/5 animate-pulse rounded bg-white/10" />
+              <div className="h-4 w-3/5 animate-pulse rounded bg-white/10" />
+            </div>
+            <div className="mt-5 h-16 w-full animate-pulse rounded-xl bg-white/[0.06]" />
+            <div className="mt-4 space-y-2">
+              <div className="h-3 w-full animate-pulse rounded bg-white/10" />
+              <div className="h-3 w-4/5 animate-pulse rounded bg-white/10" />
+            </div>
+            <div className="mt-3 border-t border-white/[0.08] pt-3">
+              <div className="h-10 w-full animate-pulse rounded-xl bg-white/10" />
             </div>
           </div>
         ))}
       </div>
-
-      <div className="pt-6">
+      <div className="mt-6 shrink-0">
         <div className="h-11 w-full animate-pulse rounded-2xl bg-white/10" />
       </div>
     </div>
@@ -684,123 +800,101 @@ function ListSkeleton() {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function ContestSection() {
-  const [contests, setContests] = useState<Contest[]>([]);
+  const [upcomingContests, setUpcomingContests] = useState<Contest[]>([]);
+  const [liveContests, setLiveContests] = useState<Contest[]>([]);
+  const [upcomingError, setUpcomingError] = useState<string | null>(null);
+  const [liveError, setLiveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   useEffect(() => {
-    let isMounted = true;
-
-    async function fetchContests() {
+    const controller = new AbortController();
+    async function loadContestPreviews() {
       try {
         const apiUrl = import.meta.env.VITE_CONTESTS_API_URL;
-
         if (!apiUrl) {
           throw new Error("VITE_CONTESTS_API_URL is not defined");
         }
-
-        console.info("[ContestSection] Fetching contests from new API:", apiUrl);
-
-        const res = await fetch(apiUrl);
-
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
+        const [upcomingResult, liveResult] = await Promise.allSettled([
+          fetchContestPreview(apiUrl, "upcoming", controller.signal),
+          fetchContestPreview(apiUrl, "active", controller.signal),
+        ]);
+        if (controller.signal.aborted) return;
+        if (upcomingResult.status === "fulfilled") {
+          setUpcomingContests(upcomingResult.value);
+          setUpcomingError(null);
+        } else {
+          const message =
+            upcomingResult.reason instanceof Error
+              ? upcomingResult.reason.message
+              : "Failed to load upcoming contests";
+          console.error(
+            "[ContestSection] Upcoming preview failed:",
+            upcomingResult.reason,
+          );
+          setUpcomingError(message);
         }
-
-        const json = (await res.json()) as ContestApiResponse;
-
-        if (!json.success) {
-          throw new Error(json.message || "Contest API returned success=false");
+        if (liveResult.status === "fulfilled") {
+          setLiveContests(liveResult.value);
+          setLiveError(null);
+        } else {
+          const message =
+            liveResult.reason instanceof Error
+              ? liveResult.reason.message
+              : "Failed to load live contests";
+          console.error(
+            "[ContestSection] Live preview failed:",
+            liveResult.reason,
+          );
+          setLiveError(message);
         }
-
-        if (!Array.isArray(json.data)) {
-          throw new Error("Contest API data is not an array");
-        }
-
-        const validContests = json.data.filter((contest) => {
-          const isValid =
-            contest &&
-            typeof contest.id === "number" &&
-            Boolean(contest.name) &&
-            Boolean(contest.url) &&
-            typeof contest.start_time === "number" &&
-            typeof contest.end_time === "number" &&
-            typeof contest.duration === "number" &&
-            Boolean(contest.platform_name) &&
-            ["ongoing", "upcoming", "ended"].includes(contest.status);
-
-          if (!isValid) {
-            console.warn("[ContestSection] Invalid contest skipped:", contest);
-          }
-
-          return isValid;
-        });
-
-        console.info("[ContestSection] New API contests loaded:", {
-          total: json.data.length,
-          valid: validContests.length,
-          ongoing: validContests.filter((c) => c.status === "ongoing").length,
-          upcoming: validContests.filter((c) => c.status === "upcoming").length,
-          ended: validContests.filter((c) => c.status === "ended").length,
-        });
-
-        if (isMounted) {
-          setContests(validContests);
+        if (
+          upcomingResult.status === "rejected" &&
+          liveResult.status === "rejected"
+        ) {
+          setError("Failed to load contest previews");
+        } else {
+          setError(null);
         }
       } catch (err: unknown) {
-        console.error("[ContestSection] Failed to fetch contests:", err);
-
-        if (isMounted) {
-          setError(err instanceof Error ? err.message : "Failed to fetch");
-        }
+        if (controller.signal.aborted) return;
+        console.error(
+          "[ContestSection] Failed to load contest previews:",
+          err,
+        );
+        setError(
+          err instanceof Error ? err.message : "Failed to fetch",
+        );
       } finally {
-        if (isMounted) {
+        if (!controller.signal.aborted) {
           setLoading(false);
         }
       }
     }
-
-    fetchContests();
-
+    loadContestPreviews();
     return () => {
-      isMounted = false;
+      controller.abort();
     };
   }, []);
-
-  const topUpcoming = useMemo(() => {
-    return contests
-      .filter((contest) => contest.status === "upcoming")
-      .sort((a, b) => a.start_time - b.start_time)
-      .slice(0, 5);
-  }, [contests]);
-
-  const topLive = useMemo(() => {
-    return contests
-      .filter((contest) => contest.status === "ongoing")
-      .sort((a, b) => a.end_time - b.end_time)
-      .slice(0, 5);
-  }, [contests]);
-
   return (
     <section
       id="contests"
       className="relative bg-[#020202] px-5 py-16 font-rubik md:px-8 lg:px-10"
     >
       <div className="mx-auto w-full max-w-7xl min-w-0">
+        {/* Section heading */}
         <div className="mb-12 text-center">
           <h2 className="text-4xl font-bold leading-tight tracking-tight text-white md:text-5xl">
             Coding <span className="text-purple-500">Contests</span>
           </h2>
         </div>
-
         {loading ? (
           <div className="grid w-full min-w-0 gap-8 lg:min-h-[140vh] lg:grid-cols-3 lg:items-start">
+            {/* Cat skeleton */}
             <div className="w-full min-w-0 lg:sticky lg:top-24 lg:self-start">
               <div className="w-full min-w-0 overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-b from-[#321255] via-[#1a0d2b] to-[#050505]">
                 <div className="h-[70vh] w-full animate-pulse rounded-[28px] bg-white/5 lg:h-[82vh]" />
               </div>
             </div>
-
             <ListSkeleton />
             <ListSkeleton />
           </div>
@@ -810,20 +904,23 @@ export default function ContestSection() {
           </div>
         ) : (
           <div className="grid w-full min-w-0 gap-8 lg:min-h-[140vh] lg:grid-cols-3 lg:items-start">
+            {/* Sticky cat */}
             <div className="w-full min-w-0 lg:sticky lg:top-24 lg:self-start">
               <CatOnlyPanel />
             </div>
-
+            {/* Upcoming contests */}
             <ContestColumn
               title="Upcoming Contests"
-              items={topUpcoming}
+              items={upcomingContests}
               variant="upcoming"
+              loadError={upcomingError}
             />
-
+            {/* Live contests */}
             <ContestColumn
               title="Live Contests"
-              items={topLive}
+              items={liveContests}
               variant="live"
+              loadError={liveError}
             />
           </div>
         )}
