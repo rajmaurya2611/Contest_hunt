@@ -134,6 +134,13 @@ const PLATFORM_META: Record<string, PlatformMeta> = {
     pill: "border-yellow-500/30 bg-yellow-500/10 text-yellow-400",
 
   },
+  nowcoder:{
+    label: "Nowcoder",
+    text: "text-purple-400",
+    dot: "bg-purple-400",
+    logo: "/icons/nowcoder.png",
+    pill: "border-purple-500/30 bg-purple-500/10 text-purple-400",
+  },
 
   codeforces: {
 
@@ -3539,7 +3546,7 @@ export default function ContestSection() {
         }
       },
       {
-        root: window.matchMedia("(min-width: 1024px)").matches ? panel : null,
+        root: window.matchMedia("(min-width: 80rem)").matches ? panel : null,
         rootMargin: "0px 0px 360px 0px",
         threshold: 0,
       },
@@ -3781,13 +3788,13 @@ export default function ContestSection() {
 
         {loading ? (
 
-          <div className="grid gap-6 lg:grid-cols-3 2xl:gap-8">
+          <div className="grid gap-6 xl:grid-cols-3 2xl:gap-8">
 
             <CalendarSkeleton />
 
 
 
-            <div className="grid gap-5 sm:grid-cols-2 lg:col-span-2 2xl:grid-cols-3 2xl:gap-6">
+            <div className="grid gap-5 sm:grid-cols-2 xl:col-span-2 2xl:grid-cols-3 2xl:gap-6">
 
               {Array.from({ length: 6 }).map((_, index) => (
 
@@ -3809,15 +3816,15 @@ export default function ContestSection() {
 
         ) : (
 
-          <div className="grid gap-6 transition-all duration-500 ease-out pb-24 lg:h-[calc(100vh-260px)] lg:min-h-[560px] lg:grid-cols-3 lg:overflow-visible 2xl:h-[calc(100dvh-240px)] 2xl:min-h-[680px] 2xl:grid-cols-3 2xl:gap-8 min-[2200px]:grid-cols-6">
+          <div className="grid gap-6 transition-all duration-500 ease-out pb-24 xl:h-[calc(100vh-260px)] xl:min-h-[560px] xl:grid-cols-3 xl:overflow-visible 2xl:h-[calc(100dvh-240px)] 2xl:min-h-[680px] 2xl:grid-cols-3 2xl:gap-8 min-[2200px]:grid-cols-6">
 
             <aside
 
               className={`min-h-0 transition-all duration-500 ease-out ${
 
                 calendarExpanded
-                  ? "lg:col-span-2 2xl:col-span-2 min-[2200px]:col-span-3"
-                  : "lg:col-span-1 2xl:col-span-1 min-[2200px]:col-span-2"
+                  ? "xl:col-span-2 2xl:col-span-2 min-[2200px]:col-span-3"
+                  : "xl:col-span-1 2xl:col-span-1 min-[2200px]:col-span-2"
 
               }`}
 
@@ -3827,7 +3834,7 @@ export default function ContestSection() {
 
                 ref={calendarScrollRef}
 
-                className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto lg:pr-1"
+                className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto xl:pr-1"
 
               >
 
@@ -3871,8 +3878,8 @@ export default function ContestSection() {
               className={`min-h-0 transition-all duration-500 ease-out ${
 
                 calendarExpanded
-                  ? "lg:col-span-1 2xl:col-span-1 min-[2200px]:col-span-3"
-                  : "lg:col-span-2 2xl:col-span-2 min-[2200px]:col-span-4"
+                  ? "xl:col-span-1 2xl:col-span-1 min-[2200px]:col-span-3"
+                  : "xl:col-span-2 2xl:col-span-2 min-[2200px]:col-span-4"
 
               }`}
 
@@ -3884,7 +3891,7 @@ export default function ContestSection() {
                 onScroll={handleCardsScroll}
                 aria-busy={loadingMore}
 
-                className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto lg:pr-1"
+                className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto xl:pr-1"
 
               >
 

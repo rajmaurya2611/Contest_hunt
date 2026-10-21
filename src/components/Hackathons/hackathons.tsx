@@ -3975,9 +3975,9 @@ export default function ContestSection() {
         </div>
 
         {loading ? (
-          <div className="grid gap-6 lg:grid-cols-3">
+          <div className="grid gap-6 xl:grid-cols-3">
             <CalendarSkeleton />
-            <div className="grid gap-5 sm:grid-cols-2 lg:col-span-2 2xl:grid-cols-3">
+            <div className="grid gap-5 sm:grid-cols-2 xl:col-span-2 2xl:grid-cols-3">
               {Array.from({ length: 6 }).map((_, index) => <SkeletonCard key={index} />)}
             </div>
           </div>
@@ -3986,8 +3986,8 @@ export default function ContestSection() {
             {error}
           </div>
         ) : (
-          <div className="grid gap-6 pb-24 transition-all duration-500 ease-out lg:h-[calc(100vh-260px)] lg:min-h-[560px] lg:grid-cols-3 lg:overflow-visible 2xl:h-[calc(100vh-230px)] 2xl:min-h-[680px] 2xl:gap-8">
-            <aside className={`min-h-0 transition-all duration-500 ease-out ${calendarExpanded ? "lg:col-span-2" : "lg:col-span-1"}`}>
+          <div className="grid gap-6 pb-24 transition-all duration-500 ease-out xl:h-[calc(100vh-260px)] xl:min-h-[560px] xl:grid-cols-3 xl:overflow-visible 2xl:h-[calc(100vh-230px)] 2xl:min-h-[680px] 2xl:gap-8">
+            <aside className={`min-h-0 transition-all duration-500 ease-out ${calendarExpanded ? "xl:col-span-2" : "xl:col-span-1"}`}>
               <div ref={calendarScrollRef} className="contest-hidden-scrollbar h-full overflow-y-auto overscroll-y-auto pr-1">
                 {catalogReady ? (
                   <ContestCalendar
@@ -4011,7 +4011,7 @@ export default function ContestSection() {
               </div>
             </aside>
 
-            <main className={`min-h-0 transition-all duration-500 ease-out ${calendarExpanded ? "lg:col-span-1" : "lg:col-span-2"}`}>
+            <main className={`min-h-0 transition-all duration-500 ease-out ${calendarExpanded ? "xl:col-span-1" : "xl:col-span-2"}`}>
               <div
                 ref={cardsScrollRef}
                 onScroll={handleCardsScroll}
