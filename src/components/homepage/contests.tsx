@@ -127,6 +127,12 @@ const PLATFORM_META: Record<
     dot: "bg-sky-400",
     logo: "/icons/nowcoder.png",
   },
+  toph:{
+    label: "Toph",
+    badge: "text-emerald-400",
+    dot: "bg-emerald-400",
+    logo: "/icons/toph.png",
+  },
   yukicoder: {
     label: "Yukicoder",
     badge: "text-fuchsia-400",
