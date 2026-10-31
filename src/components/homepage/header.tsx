@@ -40,12 +40,12 @@ const HeaderComponent: React.FC = () => {
               className="h-8 w-8 object-contain"
             />
 
-            <h1 className="text-2xl font-bold font-rubik text-white">
+            <span className="text-2xl font-bold font-rubik text-white">
               Contest
               <span className="text-purple-500">
                 Hunt
               </span>
-            </h1>
+            </span>
           </Link>
 
           {/* Desktop Navigation */}
